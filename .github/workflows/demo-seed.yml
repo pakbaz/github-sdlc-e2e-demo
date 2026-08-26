@@ -1,0 +1,81 @@
+name: Demo · seed scenarios
+
+# Lets the presenter drive the demo from the Actions tab, without a terminal.
+#
+# Files one or more scenario issues with only the `demo` label. Everything
+# else — area, priority, risk, route — is decided live by the triage agent.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Which scenario to file
+        required: true
+        default: ui
+        type: choice
+        options:
+          - ui
+          - checkout
+          - auth
+          - infra
+          - api
+          - all
+          - auto-lane
+          - gated-lane
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: File the issues
+        env:
+          # A PAT so the created issues trigger the triage workflow. Issues
+          # created with the default GITHUB_TOKEN do not fire `on: issues`.
+          GH_TOKEN: ${{ secrets.DEMO_PAT }}
+          REPO: ${{ github.repository }}
+          SCENARIO: ${{ inputs.scenario }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::DEMO_PAT is not set. Issues created with the default"
+            echo "::error::token would not trigger the triage workflow."
+            exit 1
+          fi
+
+          case "$SCENARIO" in
+            all)         list="ui checkout auth infra api" ;;
+            auto-lane)   list="ui checkout" ;;
+            gated-lane)  list="auth infra api" ;;
+            *)           list="$SCENARIO" ;;
+          esac
+
+          {
+            echo "## Seeded"
+            echo ""
+            echo "| Scenario | Issue |"
+            echo "|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for id in $list; do
+            file="demo/scenarios/$id.md"
+            title=$(head -1 "$file")
+            tail -n +3 "$file" > /tmp/body.md
+            {
+              printf '\n%s\n\n' '---'
+              printf '%s\n' '<sub>Seeded from the Actions tab. Labelled `demo` only — every'
+              printf '%s\n' 'other label on this issue was decided by the triage agent.</sub>'
+            } >> /tmp/body.md
+            url=$(gh issue create --repo "$REPO" \
+              --title "$title" --body-file /tmp/body.md --label demo)
+            echo "Filed $id → $url"
+            echo "| \`$id\` | $url |" >> "$GITHUB_STEP_SUMMARY"
+            sleep 3
+          done

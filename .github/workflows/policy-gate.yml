@@ -1,0 +1,278 @@
+name: Policy gate
+
+# Stage 5 of the pipeline — the router.
+#
+# This workflow classifies the changed paths, then either enables auto-merge
+# or explains, on the pull request, exactly who has to say yes and why.
+#
+# IMPORTANT: this workflow is *not* the gate. The gate is the `main` ruleset
+# (`required_approving_review_count: 0` + `require_code_owner_review: true`)
+# combined with `.github/CODEOWNERS`, and it is enforced by GitHub itself.
+# This workflow is a second, independent check and a human-readable
+# explanation. Even if someone deleted this file, a pull request touching an
+# owned path would still be blocked.
+#
+# The classification below intentionally mirrors
+# `src/features/dashboard/policy.ts`, which powers the live dashboard, and
+# `.github/CODEOWNERS`, which powers the real gate. All three must agree.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize, labeled]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to classify
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: policy-gate-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      risk: ${{ steps.classify.outputs.risk }}
+      lane: ${{ steps.classify.outputs.lane }}
+      areas: ${{ steps.classify.outputs.areas }}
+      owned: ${{ steps.classify.outputs.owned }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve pull request number
+        id: pr
+        run: echo "number=${{ github.event.pull_request.number || inputs.pr }}" >> "$GITHUB_OUTPUT"
+
+      - name: Classify changed paths
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+
+          gh pr view "$NUMBER" --repo "$REPO" --json files \
+            --jq '.files[].path' > /tmp/changed.txt
+
+          echo "Changed files:"
+          sed 's/^/  /' /tmp/changed.txt
+
+          # Risk rank: 0 low, 1 medium, 2 high. Highest wins.
+          rank=0
+          areas=""
+          owned="false"
+          unmatched=""
+
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case "$f" in
+              src/features/ui/*|src/styles/*)             a=ui;       r=0; o=false ;;
+              src/features/checkout/*)                    a=checkout; r=0; o=false ;;
+              src/features/dashboard/*)                   a=ui;       r=0; o=false ;;
+              tests/*)                                    a=docs;     r=0; o=false ;;
+              demo/*|docs/*|README.md|*.md)               a=docs;     r=0; o=false ;;
+              src/features/api/*)                         a=api;      r=1; o=true  ;;
+              src/features/auth/*)                        a=auth;     r=2; o=true  ;;
+              infra/*)                                    a=infra;    r=2; o=true  ;;
+              .github/*)                                  a=pipeline; r=2; o=true  ;;
+              package.json|package-lock.json|vite.config.ts|playwright.config.ts)
+                                                          a=pipeline; r=2; o=true  ;;
+              *)
+                # Fail closed: anything we do not recognise gets a human.
+                a=unknown; r=1; o=true
+                unmatched="${unmatched}${f}"$'\n'
+                ;;
+            esac
+            [ "$r" -gt "$rank" ] && rank="$r"
+            [ "$o" = "true" ] && owned="true"
+            case " $areas " in *" $a "*) ;; *) areas="${areas}${a} " ;; esac
+          done < /tmp/changed.txt
+
+          case "$rank" in
+            0) risk=low ;;
+            1) risk=medium ;;
+            2) risk=high ;;
+          esac
+
+          if [ "$risk" = "low" ] && [ "$owned" = "false" ]; then
+            lane=auto
+          else
+            lane=human-gate
+          fi
+
+          if [ -n "$unmatched" ]; then
+            echo "::warning::Unrecognised paths classified as medium risk:"
+            echo "$unmatched"
+          fi
+
+          echo "risk=$risk"
+          echo "lane=$lane"
+          echo "areas=$areas"
+          echo "owned=$owned"
+
+          {
+            echo "risk=$risk"
+            echo "lane=$lane"
+            echo "areas=${areas% }"
+            echo "owned=$owned"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Label the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          RISK: ${{ steps.classify.outputs.risk }}
+          LANE: ${{ steps.classify.outputs.lane }}
+        run: |
+          set -euo pipefail
+
+          # Clear any stale routing labels from a previous push.
+          for l in risk/low risk/medium risk/high route/auto route/human-gate needs-human-review; do
+            gh pr edit "$NUMBER" --repo "$REPO" --remove-label "$l" 2>/dev/null || true
+          done
+
+          gh pr edit "$NUMBER" --repo "$REPO" \
+            --add-label "risk/$RISK" --add-label "route/$LANE" || true
+
+          if [ "$LANE" = "human-gate" ]; then
+            gh pr edit "$NUMBER" --repo "$REPO" \
+              --add-label "needs-human-review" || true
+          fi
+
+      - name: Explain the routing decision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          RISK: ${{ steps.classify.outputs.risk }}
+          LANE: ${{ steps.classify.outputs.lane }}
+          AREAS: ${{ steps.classify.outputs.areas }}
+        run: |
+          set -euo pipefail
+
+          marker="<!-- policy-gate -->"
+
+          {
+            echo "$marker"
+            if [ "$LANE" = "auto" ]; then
+              echo "## 🟢 Automated lane — this pull request will merge itself"
+            else
+              echo "## 🛑 Human gate — a code owner must approve"
+            fi
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Areas touched | \`${AREAS}\` |"
+            echo "| Highest risk | \`risk/${RISK}\` |"
+            echo "| Code owner required | $([ "$LANE" = "auto" ] && echo "no" || echo "**yes**") |"
+            echo
+            echo "<details><summary>Changed paths</summary>"
+            echo
+            echo '```'
+            cat /tmp/changed.txt
+            echo '```'
+            echo
+            echo "</details>"
+            echo
+            if [ "$LANE" = "auto" ]; then
+              cat <<'EOF'
+          Every path in this pull request is unowned in
+          [`.github/CODEOWNERS`](../blob/main/.github/CODEOWNERS), so the
+          `main` ruleset requires **zero approving reviews**.
+
+          Auto-merge has been enabled. As soon as `ci` reports success this
+          will squash into `main` and deploy to production. No human is in
+          this loop.
+          EOF
+            else
+              cat <<'EOF'
+          At least one path in this pull request is owned in
+          [`.github/CODEOWNERS`](../blob/main/.github/CODEOWNERS), so the
+          `main` ruleset requires **an approving review from a code owner**.
+          The merge button stays disabled until a human clicks approve.
+
+          Auto-merge was deliberately **not** enabled.
+
+          The agentic reviewer will post its findings shortly. It is restricted
+          to `COMMENT` and `REQUEST_CHANGES` and cannot approve, so it can
+          never satisfy this gate on its own.
+
+          > This workflow is only an explanation. The gate itself is the branch
+          > ruleset plus `CODEOWNERS`, enforced by GitHub — deleting this
+          > workflow would not unblock the merge.
+          EOF
+            fi
+          } > /tmp/gate.md
+
+          # Update in place so repeated pushes do not spam the thread.
+          existing=$(gh api "repos/$REPO/issues/$NUMBER/comments" \
+            --jq "[.[] | select(.body | startswith(\"$marker\"))] | last | .id // empty")
+
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" \
+              -F body=@/tmp/gate.md > /dev/null
+            echo "Updated existing policy-gate comment."
+          else
+            gh pr comment "$NUMBER" --repo "$REPO" --body-file /tmp/gate.md
+          fi
+
+      - name: Enable auto-merge (automated lane only)
+        if: steps.classify.outputs.lane == 'auto'
+        env:
+          GH_TOKEN: ${{ secrets.DEMO_PAT || github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          if gh pr merge "$NUMBER" --repo "$REPO" --squash --auto --delete-branch; then
+            echo "Auto-merge enabled for #$NUMBER."
+          else
+            echo "::warning::Could not enable auto-merge. Is it enabled on the repository?"
+          fi
+
+      - name: Request the code owner's review (human gate only)
+        if: steps.classify.outputs.lane == 'human-gate'
+        env:
+          GH_TOKEN: ${{ secrets.DEMO_PAT || github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          author=$(gh pr view "$NUMBER" --repo "$REPO" --json author --jq '.author.login')
+          owner="${REPO%%/*}"
+          if [ "$author" = "$owner" ]; then
+            echo "Author is the code owner; GitHub will not accept a self-review request."
+            exit 0
+          fi
+          gh api -X POST "repos/$REPO/pulls/$NUMBER/requested_reviewers" \
+            -f "reviewers[]=$owner" > /dev/null 2>&1 \
+            && echo "Requested review from @$owner." \
+            || echo "::warning::Could not request a review from @$owner."
+
+      - name: Summary
+        if: always()
+        env:
+          RISK: ${{ steps.classify.outputs.risk }}
+          LANE: ${{ steps.classify.outputs.lane }}
+          AREAS: ${{ steps.classify.outputs.areas }}
+        run: |
+          {
+            echo "## Policy gate"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Areas | \`${AREAS}\` |"
+            echo "| Risk | \`risk/${RISK}\` |"
+            echo "| Lane | ${LANE} |"
+          } >> "$GITHUB_STEP_SUMMARY"

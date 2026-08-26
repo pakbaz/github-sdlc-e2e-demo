@@ -1,0 +1,159 @@
+import { describe, expect, it } from 'vitest';
+import type { GhIssue, GhLabel, GhPull } from '../../src/features/dashboard/github';
+import { hasLabel, labelValue } from '../../src/features/dashboard/github';
+import { buildPipeline, groupByStage, stageFor, STAGES } from '../../src/features/dashboard/pipeline';
+
+const label = (name: string): GhLabel => ({ name, color: 'ededed', description: null });
+
+function makeIssue(overrides: Partial<GhIssue> = {}): GhIssue {
+  return {
+    number: 1,
+    title: 'Cart badge shows the wrong number of items',
+    state: 'open',
+    html_url: 'https://github.com/o/r/issues/1',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+    labels: [],
+    assignees: [],
+    user: null,
+    body: null,
+    ...overrides,
+  };
+}
+
+function makePull(overrides: Partial<GhPull> = {}): GhPull {
+  return {
+    number: 42,
+    title: 'Fix cart badge count',
+    state: 'open',
+    html_url: 'https://github.com/o/r/pull/42',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+    merged_at: null,
+    draft: false,
+    labels: [],
+    user: null,
+    head: { ref: 'copilot/fix-1', sha: 'abc123' },
+    base: { ref: 'main' },
+    auto_merge: null,
+    ...overrides,
+  };
+}
+
+const NO_DEPLOYS = new Set<string>();
+
+describe('label helpers', () => {
+  it('reads the value out of a prefixed label', () => {
+    const labels = [label('priority/P0'), label('risk/high'), label('area/auth')];
+    expect(labelValue(labels, 'priority')).toBe('P0');
+    expect(labelValue(labels, 'risk')).toBe('high');
+    expect(labelValue(labels, 'area')).toBe('auth');
+    expect(labelValue(labels, 'missing')).toBeNull();
+  });
+
+  it('detects exact labels', () => {
+    expect(hasLabel([label('agent/triaged')], 'agent/triaged')).toBe(true);
+    expect(hasLabel([label('agent/triaged')], 'demo')).toBe(false);
+  });
+});
+
+describe('stageFor', () => {
+  it('starts an untouched issue in "filed"', () => {
+    expect(stageFor(makeIssue(), null, NO_DEPLOYS)).toBe('filed');
+  });
+
+  it('moves to "triaged" once a risk label lands', () => {
+    const issue = makeIssue({ labels: [label('risk/low'), label('priority/P3')] });
+    expect(stageFor(issue, null, NO_DEPLOYS)).toBe('triaged');
+  });
+
+  it('moves to "agent" once Copilot is assigned', () => {
+    const issue = makeIssue({
+      labels: [label('risk/low')],
+      assignees: [{ login: 'Copilot', avatar_url: '', type: 'Bot' }],
+    });
+    expect(stageFor(issue, null, NO_DEPLOYS)).toBe('agent');
+  });
+
+  it('puts a low-risk pull request in "review"', () => {
+    const issue = makeIssue({ labels: [label('risk/low')] });
+    expect(stageFor(issue, makePull(), NO_DEPLOYS)).toBe('review');
+  });
+
+  it('puts a high-risk pull request in "gate"', () => {
+    const issue = makeIssue({ labels: [label('risk/high')] });
+    expect(stageFor(issue, makePull(), NO_DEPLOYS)).toBe('gate');
+  });
+
+  it('respects an explicit needs-human-review label on the pull request', () => {
+    const issue = makeIssue({ labels: [label('risk/low')] });
+    const pull = makePull({ labels: [label('needs-human-review')] });
+    expect(stageFor(issue, pull, NO_DEPLOYS)).toBe('gate');
+  });
+
+  it('moves to "merged" once the pull request lands', () => {
+    const issue = makeIssue({ labels: [label('risk/low')] });
+    const pull = makePull({ merged_at: '2024-01-02T00:00:00Z' });
+    expect(stageFor(issue, pull, NO_DEPLOYS)).toBe('merged');
+  });
+
+  it('moves to "deployed" once the merged sha has a deployment', () => {
+    const issue = makeIssue({ labels: [label('risk/low')] });
+    const pull = makePull({ merged_at: '2024-01-02T00:00:00Z' });
+    expect(stageFor(issue, pull, new Set(['abc123']))).toBe('deployed');
+  });
+});
+
+describe('buildPipeline', () => {
+  it('links an issue to the pull request that references it', () => {
+    const issue = makeIssue({ number: 7, labels: [label('risk/low')] });
+    const pull = makePull({ title: 'Fix badge (closes #7)', head: { ref: 'fix-badge', sha: 'z' } });
+    const [card] = buildPipeline([issue], [pull], NO_DEPLOYS);
+    expect(card.pull?.number).toBe(42);
+    expect(card.lane).toBe('auto');
+  });
+
+  it('surfaces priority, risk and area on the card', () => {
+    const issue = makeIssue({
+      labels: [label('priority/P0'), label('risk/high'), label('area/auth')],
+    });
+    const [card] = buildPipeline([issue], [], NO_DEPLOYS);
+    expect(card.priority).toBe('P0');
+    expect(card.risk).toBe('high');
+    expect(card.area).toBe('auth');
+    expect(card.lane).toBe('human-gate');
+    expect(card.triaged).toBe(true);
+  });
+
+  it('ignores label values outside the known vocabulary', () => {
+    const issue = makeIssue({ labels: [label('priority/urgent'), label('risk/spicy')] });
+    const [card] = buildPipeline([issue], [], NO_DEPLOYS);
+    expect(card.priority).toBeNull();
+    expect(card.risk).toBeNull();
+    expect(card.lane).toBeNull();
+  });
+});
+
+describe('groupByStage', () => {
+  it('creates a bucket for every stage even when empty', () => {
+    const grouped = groupByStage([]);
+    expect(Object.keys(grouped).sort()).toEqual([...STAGES].sort());
+    for (const stage of STAGES) {
+      expect(grouped[stage]).toEqual([]);
+    }
+  });
+
+  it('places each card in its own stage', () => {
+    const cards = buildPipeline(
+      [
+        makeIssue({ number: 1 }),
+        makeIssue({ number: 2, labels: [label('risk/low')] }),
+      ],
+      [],
+      NO_DEPLOYS,
+    );
+    const grouped = groupByStage(cards);
+    expect(grouped.filed).toHaveLength(1);
+    expect(grouped.triaged).toHaveLength(1);
+  });
+});
