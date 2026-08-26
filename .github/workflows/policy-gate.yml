@@ -77,6 +77,9 @@ jobs:
             [ -n "$f" ] || continue
             case "$f" in
               src/features/ui/*|src/styles/*)             a=ui;       r=0; o=false ;;
+              public/*|index.html)                        a=ui;       r=0; o=false ;;
+              src/App.tsx|src/main.tsx|src/config.ts|src/vite-env.d.ts)
+                                                          a=ui;       r=0; o=false ;;
               src/features/checkout/*)                    a=checkout; r=0; o=false ;;
               src/features/dashboard/*)                   a=ui;       r=0; o=false ;;
               tests/*)                                    a=docs;     r=0; o=false ;;
@@ -84,8 +87,10 @@ jobs:
               src/features/api/*)                         a=api;      r=1; o=true  ;;
               src/features/auth/*)                        a=auth;     r=2; o=true  ;;
               infra/*)                                    a=infra;    r=2; o=true  ;;
-              .github/*)                                  a=pipeline; r=2; o=true  ;;
+              .github/*|scripts/*)                        a=pipeline; r=2; o=true  ;;
               package.json|package-lock.json|vite.config.ts|playwright.config.ts)
+                                                          a=pipeline; r=2; o=true  ;;
+              eslint.config.js|tsconfig.json|tsconfig.app.json|tsconfig.node.json|Makefile|.gitattributes)
                                                           a=pipeline; r=2; o=true  ;;
               *)
                 # Fail closed: anything we do not recognise gets a human.
