@@ -53,6 +53,8 @@ while you talk. This is the single highest-value thing on this checklist.
 | The board seems frozen | Check the *API budget* line. If it says it is polling every few minutes, you are anonymous — paste a token. |
 | A card reaches **Merged** but never **Deployed** | `DEMO_PAT` is missing. GitHub completes an auto-merge with the token that enabled it, and `GITHUB_TOKEN` pushes do not trigger workflows. Run `gh workflow run "Deploy to Pages" --ref main`. `make doctor` catches this beforehand. |
 | The store still shows the bug after a deploy | Your browser is serving the cached page — Pages sets `max-age=600` on `index.html`. The dashboard notices this itself and offers a **Reload** button; otherwise hard-reload (`Cmd/Ctrl+Shift+R`). |
+| Copilot opens a PR then the run dies instantly | The `copilot` repository environment is missing — the agent's session targets it. `gh api -X PUT repos/OWNER/REPO/environments/copilot`, or just re-run `make setup`. `make doctor` catches this beforehand. |
+| Nothing dispatches at all — no runs, no checks | Check [githubstatus.com](https://www.githubstatus.com). During an Actions incident every lane stalls; the board and the store stay up because they read the REST API directly. |
 | Everything breaks | `make status` in the terminal shows the same state. |
 
 ---
