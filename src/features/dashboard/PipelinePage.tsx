@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadRepoSnapshot, type RepoSnapshot } from './github';
 import { buildPipeline, groupByStage, STAGE_META, STAGES, type PipelineCard } from './pipeline';
 import { repoSlug, repoUrl } from '../../config';
+import { refreshIntervalMs, describeInterval } from './refresh';
 
-const REFRESH_MS = 20_000;
 const TOKEN_KEY = 'nimbus.dashboard.token';
 
 function timeAgo(iso: string | Date): string {
@@ -17,8 +17,8 @@ function timeAgo(iso: string | Date): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-function runTone(run: { status: string; conclusion: string | null }): string {
-  if (run.status !== 'completed') return 'running';
+
+function runTone(run: { status: string; conclusion: string | null }): string {  if (run.status !== 'completed') return 'running';
   if (run.conclusion === 'success') return 'success';
   if (run.conclusion === 'cancelled' || run.conclusion === 'skipped') return 'muted';
   return 'failure';
@@ -47,11 +47,14 @@ export function PipelinePage() {
 
   useEffect(() => {
     if (!autoRefresh) return;
-    timer.current = window.setInterval(() => void refresh(), REFRESH_MS);
+    // Recomputed after every snapshot, so the board slows down as the budget
+    // drains and speeds back up the moment a token is pasted in.
+    const every = refreshIntervalMs(snapshot?.rateLimit);
+    timer.current = window.setTimeout(() => void refresh(), every);
     return () => {
-      if (timer.current) window.clearInterval(timer.current);
+      if (timer.current) window.clearTimeout(timer.current);
     };
-  }, [autoRefresh, refresh]);
+  }, [autoRefresh, refresh, snapshot]);
 
   const deployedShas = useMemo(
     () => new Set((snapshot?.deployments ?? []).map((deployment) => deployment.sha)),
@@ -64,6 +67,8 @@ export function PipelinePage() {
   );
 
   const grouped = useMemo(() => groupByStage(cards), [cards]);
+
+  const pollEvery = refreshIntervalMs(snapshot?.rateLimit);
 
   const laneCounts = useMemo(() => {
     let auto = 0;
@@ -161,6 +166,7 @@ export function PipelinePage() {
             {snapshot?.rateLimit.remaining ?? '—'}/{snapshot?.rateLimit.limit ?? '—'}
           </strong>{' '}
           requests remaining {token ? '(authenticated)' : '(anonymous)'}
+          {autoRefresh && snapshot ? ` · polling every ${describeInterval(pollEvery)}` : ''}
         </summary>
         <p className="tokenbox__hint">
           Optional. A token with <code>public_repo</code> read access raises the limit to 5,000/hour.

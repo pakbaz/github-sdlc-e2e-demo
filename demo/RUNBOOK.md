@@ -35,6 +35,13 @@ Open these tabs in this order and leave them open:
 
 Zoom the browser to ~125%. The board is designed for that.
 
+**Paste a token into the board before you start.** Open the *API budget* line
+under the lane summary and paste any read-only GitHub token. Anonymous callers
+get 60 API requests an hour; the board spends four per refresh, so without a
+token it deliberately slows to roughly one refresh every four minutes to avoid
+going dark. With a token it refreshes every 20 seconds and cards visibly move
+while you talk. This is the single highest-value thing on this checklist.
+
 ### Fallbacks
 
 | If | Do |
@@ -43,7 +50,7 @@ Zoom the browser to ~125%. The board is designed for that.
 | The coding agent stalls | You seeded five issues; switch to one that moved. |
 | A run fails | Show the failure — it is *more* convincing. Then re-run it. |
 | Pages is stale | The board reads the API directly; it is still live. |
-| Rate limited | Paste a token into the box on the board. |
+| The board seems frozen | Check the *API budget* line. If it says it is polling every few minutes, you are anonymous — paste a token. |
 | Everything breaks | `make status` in the terminal shows the same state. |
 
 ---
