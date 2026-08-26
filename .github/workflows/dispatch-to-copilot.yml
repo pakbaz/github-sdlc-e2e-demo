@@ -30,10 +30,14 @@ concurrency:
 
 jobs:
   dispatch:
-    # Only react to the triage agent's handoff label, never to the other four.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.label.name == 'agent/triaged'
+    # Deliberately not keyed on `github.event.label.name`. Triage applies five
+    # labels, so five `labeled` events arrive and any one of them is enough to
+    # notice the handoff. Keying on the single `agent/triaged` event means one
+    # dropped webhook — which is exactly what a GitHub Actions incident does —
+    # strands the issue forever with nobody working on it. The real condition
+    # is checked below against the issue's current labels, and the assignment
+    # is idempotent, so the extra invocations cost a few seconds and nothing
+    # else.
     runs-on: ubuntu-latest
     steps:
       - name: Resolve issue number
@@ -53,6 +57,24 @@ jobs:
             --jq '.labels[].name')
           echo "Labels on #$NUMBER:"
           echo "$labels" | sed 's/^/  - /'
+
+          # The triage agent applies `agent/triaged` as its last act. Until it
+          # is there, triage has not finished and there is nothing to hand off.
+          if ! echo "$labels" | grep -qx 'agent/triaged'; then
+            echo "Not triaged yet — nothing to dispatch."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Idempotency: several label events race here, and a presenter may
+          # also re-run this by hand. Assigning twice would post a duplicate
+          # lane comment and restart the agent mid-flight.
+          if gh issue view "$NUMBER" --repo "$REPO" --json assignees \
+               --jq '.assignees[].login' | grep -qix 'copilot'; then
+            echo "Already handed to the coding agent."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           risk=$(echo "$labels" | grep '^risk/' | head -1 || true)
           priority=$(echo "$labels" | grep '^priority/' | head -1 || true)
