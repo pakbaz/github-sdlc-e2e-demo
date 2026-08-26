@@ -79,20 +79,34 @@ happen while you are talking.
 - `gh` ≥ 2.90 and the [`gh-aw`](https://github.com/githubnext/gh-aw) extension
 - Node 22+
 - A Copilot subscription with the coding agent enabled
-- A token stored as `COPILOT_GITHUB_TOKEN`, `GH_AW_GITHUB_TOKEN` and `DEMO_PAT`.
-  The quickest route is the one you are already signed in with:
+- A **fine-grained personal access token** stored as `COPILOT_GITHUB_TOKEN`,
+  `GH_AW_GITHUB_TOKEN` and `DEMO_PAT`.
+
+  It has to be fine-grained. `gh auth token` gives you an OAuth token (`gho_…`)
+  and the agentic engine rejects it outright — *"OAuth tokens are not supported
+  for GitHub Copilot"* — so triage and the agentic review fail before they start.
+
+  Create one at [Settings → Developer Settings → Fine-grained tokens](https://github.com/settings/personal-access-tokens/new):
+
+  | Field | Value |
+  |---|---|
+  | Resource owner | **your personal account** (not an org/EMU account) |
+  | Repository access | Only select repositories → this repo |
+  | Repository permissions | Actions **RW**, Contents **RW**, Issues **RW**, Pull requests **RW**, Workflows **RW**, Metadata R (added for you) |
+  | Account permissions | Copilot Requests **Read** |
+
+  Then store it three times — the engine, the safe-output writer and the demo
+  scripts each read a different name:
 
   ```bash
   for s in COPILOT_GITHUB_TOKEN GH_AW_GITHUB_TOKEN DEMO_PAT; do
-    gh auth token | gh secret set "$s" --repo OWNER/REPO
+    gh secret set "$s" --repo OWNER/REPO < /path/to/token.txt
   done
   ```
 
-  That works because `gh`'s own token already carries `repo` + `workflow`, which
-  is enough to assign the coding agent and to make an auto-merge trigger the
-  deploy. For anything longer-lived than a demo prefer a **fine-grained PAT**
-  scoped to this one repository — the `gh` token is account-wide.
-  `make setup` prints the exact permissions.
+  `GH_AW_GITHUB_TOKEN` is what makes an agent-authored commit trigger CI: the
+  default `GITHUB_TOKEN` deliberately does not dispatch further workflows, so
+  without it the auto lane merges and never deploys.
 - A repository environment named `copilot`. `make setup` creates it; without it
   the coding agent opens its pull request and the run dies immediately.
 

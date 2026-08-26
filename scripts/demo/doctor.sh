@@ -46,6 +46,20 @@ for s in COPILOT_GITHUB_TOKEN GH_AW_GITHUB_TOKEN DEMO_PAT; do
   fi
 done
 
+# The secret's *value* cannot be read back, but the engine rejects OAuth tokens
+# outright, so the last completed triage run tells us whether the right kind of
+# token is stored.
+last_triage=$(gh api "repos/$REPO/actions/workflows/triage.lock.yml/runs?per_page=1&status=completed" \
+  --jq '.workflow_runs[0].id' 2>/dev/null || true)
+if [ -n "${last_triage:-}" ] && [ "$last_triage" != "null" ]; then
+  guard=$(gh api "repos/$REPO/actions/runs/$last_triage/jobs" \
+    --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name] | join(" ")' 2>/dev/null || true)
+  case "$guard" in
+    *"Validate COPILOT_GITHUB_TOKEN"*)
+      bad "the last triage run was rejected at the token guard — COPILOT_GITHUB_TOKEN must be a fine-grained PAT (github_pat_...), not the OAuth token from 'gh auth token'" ;;
+  esac
+fi
+
 # ── Repository settings ──────────────────────────────────────────────────────
 step "Repository settings"
 repo_json=$(gh api "repos/$REPO")
