@@ -100,8 +100,14 @@ jobs:
                  continue ;;
             esac
 
+            # The API reports the coding agent as `app/copilot-swe-agent` —
+            # not `Copilot`, which is what the web UI shows, and not
+            # `copilot-swe-agent`, which is what the assignment mutation takes.
+            # An anchored match silently skips every agent pull request and the
+            # automated lane stops dead, so match the substring. The
+            # `copilot/*` branch check above already does the real narrowing.
             case "$author" in
-              Copilot|copilot-swe-agent|copilot*) ;;
+              *[Cc]opilot*) ;;
               *) echo "#$number is authored by $author, not the agent — skipping."
                  continue ;;
             esac

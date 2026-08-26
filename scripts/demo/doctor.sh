@@ -141,7 +141,7 @@ done < <(demo_labels)
 # ── Workflows ────────────────────────────────────────────────────────────────
 step "Workflows on the default branch"
 wf=$(gh api "repos/$REPO/actions/workflows" --jq '.workflows[] | [.name, .state] | @tsv' 2>/dev/null || true)
-for expect in "Risk-based issue triage" "Agentic pull request review" "Dispatch to Copilot" "ci" "Policy gate" "Deploy to Pages"; do
+for expect in "Risk-based issue triage" "Agentic pull request review" "Dispatch to Copilot" "Agent PR ready" "ci" "Policy gate" "Deploy to Pages"; do
   line=$(echo "$wf" | grep -iF "$expect" | head -1 || true)
   if [ -z "$line" ]; then
     bad "workflow '$expect' is not on main"
