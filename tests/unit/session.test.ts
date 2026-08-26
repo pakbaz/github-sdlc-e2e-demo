@@ -34,6 +34,11 @@ describe('isSessionValid', () => {
   it('accepts a freshly issued session', () => {
     expect(isSessionValid(createSession('user-1', NOW), NOW)).toBe(true);
   });
+
+  it('rejects a session once it reaches expiry', () => {
+    const session = createSession('user-1', NOW);
+    expect(isSessionValid(session, NOW + SESSION_TTL_MS)).toBe(false);
+  });
 });
 
 describe('millisUntilExpiry', () => {
@@ -58,6 +63,11 @@ describe('hasScope', () => {
   it('denies everything for a missing session', () => {
     expect(hasScope(null, 'store:read', NOW)).toBe(false);
   });
+
+  it('denies scopes on an expired session', () => {
+    const session = createSession('user-1', NOW);
+    expect(hasScope(session, 'cart:write', NOW + SESSION_TTL_MS)).toBe(false);
+  });
 });
 
 describe('parseSession', () => {
@@ -74,17 +84,20 @@ describe('parseSession', () => {
     const session = createSession('user-1', NOW);
     expect(parseSession(JSON.stringify(session))).toEqual(session);
   });
+
+  it('rejects parsed state with an invalid shape', () => {
+    expect(parseSession(JSON.stringify({ userId: 123 }))).toBeNull();
+    expect(
+      parseSession(JSON.stringify({ ...createSession('user-1', NOW), scopes: ['store:read', 123] })),
+    ).toBeNull();
+  });
 });
 
 /**
  * DEMO NOTE — the "auth" scenario (P0 / risk HIGH).
  *
- * `isSessionValid` currently ignores `expiresAt` entirely, so an expired
- * session is still accepted. The tests above deliberately do not assert the
- * expiry behaviour, which keeps `main` green while the defect is planted.
- *
- * The seeded issue asks the coding agent to enforce expiry and add regression
- * tests here. Because `src/features/auth/**` has a CODEOWNER, the resulting
- * pull request cannot merge until a human approves it — no matter how good
- * the fix or how green the checks are.
+ * The seeded issue asks the coding agent to enforce expiry and validate parsed
+ * persisted state. Because `src/features/auth/**` has a CODEOWNER, the
+ * resulting pull request cannot merge until a human approves it — no matter
+ * how good the fix or how green the checks are.
  */

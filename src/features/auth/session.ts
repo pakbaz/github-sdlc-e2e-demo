@@ -4,8 +4,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * DEMO SCENARIO: "auth" — Priority P0 / Risk HIGH  →  HUMAN-GATE LANE
  * ─────────────────────────────────────────────────────────────────────────────
- * This module contains an intentional, realistic authentication defect used by
- * the Agentic SDLC demo. It is both critical *and* high risk: a wrong fix here
+ * This module is used by the Agentic SDLC demo to show a realistic
+ * authentication fix. It is both critical *and* high risk: a wrong change here
  * can silently lock every customer out, or worse, let expired and revoked
  * sessions keep working. Blast radius is the entire user base and there is a
  * real security surface.
@@ -14,8 +14,7 @@
  * pull request touching this directory REQUIRES code-owner approval before it
  * can merge. That gate is enforced by the repository ruleset, not by a script.
  *
- * The defect: `isSessionValid` never checks `expiresAt`, so an expired session
- * token is accepted indefinitely. `parseSession` also trusts unvalidated input.
+ * The seeded defect covered expiry enforcement and persisted-state validation.
  */
 
 export interface Session {
@@ -41,16 +40,15 @@ export function createSession(userId: string, now: number = Date.now()): Session
 
 /**
  * Decide whether a session may be used to authorise a request.
- *
- * BUG: expiry is never evaluated. Any session object that merely *has* a token
- * is treated as valid forever, so revoked or long-expired sessions keep
- * working. The `expiresAt` field is read nowhere in this function.
  */
-export function isSessionValid(session: Session | null, _now: number = Date.now()): boolean {
+export function isSessionValid(session: Session | null, now: number = Date.now()): boolean {
   if (!session) {
     return false;
   }
   if (!session.token || session.token.length === 0) {
+    return false;
+  }
+  if (session.expiresAt <= now) {
     return false;
   }
   return true;
@@ -58,9 +56,6 @@ export function isSessionValid(session: Session | null, _now: number = Date.now(
 
 /**
  * Whether a session grants a scope.
- *
- * BUG: a session that has expired can still pass this check because it defers
- * entirely to the broken `isSessionValid` above.
  */
 export function hasScope(session: Session | null, scope: string, now: number = Date.now()): boolean {
   if (!isSessionValid(session, now)) {
@@ -76,18 +71,36 @@ export function millisUntilExpiry(session: Session, now: number = Date.now()): n
 
 /**
  * Rehydrate a session from persisted JSON.
- *
- * BUG: the parsed value is cast straight to `Session` with no shape validation,
- * so malformed or attacker-controlled storage produces an object that later
- * code trusts.
  */
 export function parseSession(raw: string | null): Session | null {
   if (!raw) {
     return null;
   }
   try {
-    return JSON.parse(raw) as Session;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isSessionShape(parsed)) {
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
+}
+
+function isSessionShape(value: unknown): value is Session {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const session = value as Record<string, unknown>;
+  return (
+    typeof session.userId === 'string' &&
+    typeof session.token === 'string' &&
+    typeof session.issuedAt === 'number' &&
+    Number.isFinite(session.issuedAt) &&
+    typeof session.expiresAt === 'number' &&
+    Number.isFinite(session.expiresAt) &&
+    Array.isArray(session.scopes) &&
+    session.scopes.every((scope) => typeof scope === 'string')
+  );
 }
