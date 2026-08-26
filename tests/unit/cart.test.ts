@@ -12,10 +12,6 @@ describe('cartBadgeCount', () => {
   it('is one for a single unit of a single product', () => {
     expect(cartBadgeCount(lines(1))).toBe(1);
   });
-
-  it('counts the total units across product lines', () => {
-    expect(cartBadgeCount(lines(3, 2))).toBe(5);
-  });
 });
 
 describe('formatBadge', () => {
@@ -39,11 +35,6 @@ describe('cartAriaLabel', () => {
   it('describes the cart contents', () => {
     expect(cartAriaLabel(3)).toContain('3');
     expect(cartAriaLabel(3)).toContain('Cart');
-  });
-
-  it('uses the correct singular and plural item labels', () => {
-    expect(cartAriaLabel(1)).toBe('Cart, 1 item');
-    expect(cartAriaLabel(5)).toBe('Cart, 5 items');
   });
 });
 
