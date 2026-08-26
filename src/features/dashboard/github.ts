@@ -42,6 +42,7 @@ export interface GhPull {
   head: { ref: string; sha: string };
   base: { ref: string };
   auto_merge: unknown | null;
+  body: string | null;
 }
 
 export interface GhRun {
