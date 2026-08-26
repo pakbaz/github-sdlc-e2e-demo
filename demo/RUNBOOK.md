@@ -51,6 +51,7 @@ while you talk. This is the single highest-value thing on this checklist.
 | A run fails | Show the failure — it is *more* convincing. Then re-run it. |
 | Pages is stale | The board reads the API directly; it is still live. |
 | The board seems frozen | Check the *API budget* line. If it says it is polling every few minutes, you are anonymous — paste a token. |
+| A card reaches **Merged** but never **Deployed** | `DEMO_PAT` is missing. GitHub completes an auto-merge with the token that enabled it, and `GITHUB_TOKEN` pushes do not trigger workflows. Run `gh workflow run "Deploy to Pages" --ref main`. `make doctor` catches this beforehand. |
 | Everything breaks | `make status` in the terminal shows the same state. |
 
 ---

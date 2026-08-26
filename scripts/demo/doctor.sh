@@ -33,8 +33,17 @@ fi
 # ── Secrets ──────────────────────────────────────────────────────────────────
 step "Secrets"
 secrets=$(gh secret list --repo "$REPO" --json name --jq '.[].name' 2>/dev/null || true)
+have_pat=1
 for s in COPILOT_GITHUB_TOKEN GH_AW_GITHUB_TOKEN DEMO_PAT; do
-  if echo "$secrets" | grep -qxF "$s"; then ok "$s"; else bad "$s is not set (see setup.sh)"; fi
+  if echo "$secrets" | grep -qxF "$s"; then
+    ok "$s"
+  else
+    case "$s" in
+      COPILOT_GITHUB_TOKEN) bad "$s is not set — the triage and review agents cannot run" ;;
+      GH_AW_GITHUB_TOKEN)   bad "$s is not set — agent output will not trigger downstream CI" ;;
+      DEMO_PAT)             bad "$s is not set — auto-merged changes will never deploy"; have_pat=0 ;;
+    esac
+  fi
 done
 
 # ── Repository settings ──────────────────────────────────────────────────────
@@ -160,6 +169,27 @@ if sha=$(gh api "repos/$REPO/git/ref/tags/$BASELINE_TAG" --jq '.object.sha' 2>/d
   ok "$BASELINE_TAG → ${sha:0:7}"
 else
   bad "$BASELINE_TAG tag is missing — reset.sh cannot restore"
+fi
+
+# ── Production ───────────────────────────────────────────────────────────────
+# GitHub completes an auto-merge with whichever token enabled it, and pushes
+# made with the default GITHUB_TOKEN do not trigger workflows. Without DEMO_PAT
+# the automated lane therefore merges but never deploys, and the board shows a
+# "Deployed" column that production never actually reaches. Catch that here
+# rather than in front of an audience.
+step "Production"
+main_sha=$(gh api "repos/$REPO/git/ref/heads/main" --jq '.object.sha' 2>/dev/null || echo "")
+deployed_sha=$(gh run list --repo "$REPO" --workflow "Deploy to Pages" \
+  --status success --limit 1 --json headSha --jq '.[0].headSha' 2>/dev/null || echo "")
+
+if [ -z "$main_sha" ] || [ -z "$deployed_sha" ]; then
+  warn "could not determine what is deployed"
+elif [ "$main_sha" = "$deployed_sha" ]; then
+  ok "production matches main (${main_sha:0:7})"
+else
+  bad "production is at ${deployed_sha:0:7} but main is at ${main_sha:0:7}"
+  info "fix: gh workflow run 'Deploy to Pages' --repo $REPO --ref main"
+  [ "$have_pat" -eq 0 ] && info "root cause: DEMO_PAT is unset, so auto-merges do not trigger the deploy"
 fi
 
 # ── Clean slate ──────────────────────────────────────────────────────────────

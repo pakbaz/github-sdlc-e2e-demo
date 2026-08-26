@@ -235,7 +235,15 @@ jobs:
       - name: Enable auto-merge (automated lane only)
         if: steps.classify.outputs.lane == 'auto'
         env:
+          # DEMO_PAT matters more here than it looks. GitHub completes an
+          # auto-merge using whichever token enabled it, and a push made with
+          # the default GITHUB_TOKEN deliberately does *not* trigger further
+          # workflows. Fall back to it and the automated lane merges but never
+          # deploys: the card stops at "Merged", production never updates, and
+          # the demo loses the moment it exists to show. `doctor.sh` checks for
+          # exactly this drift before you present.
           GH_TOKEN: ${{ secrets.DEMO_PAT || github.token }}
+          HAVE_PAT: ${{ secrets.DEMO_PAT != '' }}
           REPO: ${{ github.repository }}
           NUMBER: ${{ steps.pr.outputs.number }}
         run: |
@@ -244,6 +252,10 @@ jobs:
             echo "Auto-merge enabled for #$NUMBER."
           else
             echo "::warning::Could not enable auto-merge. Is it enabled on the repository?"
+          fi
+
+          if [ "$HAVE_PAT" != "true" ]; then
+            echo "::warning::DEMO_PAT is not set, so this merge will be made with GITHUB_TOKEN and will NOT trigger the Pages deploy. Run the 'Deploy to Pages' workflow manually, or set DEMO_PAT."
           fi
 
       - name: Request the code owner's review (human gate only)
