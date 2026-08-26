@@ -48,4 +48,24 @@ test.describe('Nimbus storefront', () => {
   test('has a visible cart badge', async ({ page }) => {
     await expect(page.getByTestId('cart-badge')).toBeVisible();
   });
+
+  test('counts units, not product lines, in the cart badge', async ({ page }) => {
+    const badge = page.getByTestId('cart-badge');
+
+    // The bag starts with three Cirrus Mugs and two Contrail Socks: five units
+    // across two product lines.
+    await expect(badge).toHaveText('5');
+    await expect(badge).toHaveAttribute('aria-label', 'Cart, 5 items');
+
+    for (let i = 0; i < 2; i += 1) {
+      await page.getByRole('button', { name: 'Remove one Cirrus Mug' }).click();
+    }
+    for (let i = 0; i < 2; i += 1) {
+      await page.getByRole('button', { name: 'Remove one Contrail Socks' }).click();
+    }
+
+    // One unit left: the accessible label must be singular.
+    await expect(badge).toHaveText('1');
+    await expect(badge).toHaveAttribute('aria-label', 'Cart, 1 item');
+  });
 });
