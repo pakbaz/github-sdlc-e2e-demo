@@ -57,25 +57,40 @@ function toRisk(value: string | null): Risk | null {
   return value && RISKS.has(value) ? (value as Risk) : null;
 }
 
-/** Link an issue to the pull request that claims to fix it. */
+/**
+ * Link an issue to the pull request that claims to fix it.
+ *
+ * The **body** matters most, and it was the omission that broke the board: the
+ * coding agent titles its pull request after the fix ("Fix cart badge to count
+ * units") and names its branch after the fix too, so neither one mentions the
+ * issue number anywhere. The only durable link it writes is `Closes #N` in the
+ * body. Without reading it, a shipped issue looked like it had no pull request
+ * at all — so it was treated as abandoned and vanished from the board at the
+ * exact moment it reached production, which is the moment the demo exists for.
+ *
+ * Ordered most trustworthy first: an explicit closing keyword beats a bare
+ * `#N`, which beats a number that merely appears in the branch name.
+ */
 export function findLinkedPull(issue: GhIssue, pulls: readonly GhPull[]): GhPull | null {
-  const patterns = [
-    new RegExp(`\\b(?:closes|fixes|resolves)\\s+#${issue.number}\\b`, 'i'),
-    new RegExp(`#${issue.number}\\b`),
+  const closes = new RegExp(`\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s*:?\\s+#${issue.number}\\b`, 'i');
+  const mentions = new RegExp(`#${issue.number}\\b`);
+
+  const tests: ((pull: GhPull) => boolean)[] = [
+    (pull) => closes.test(pull.title) || closes.test(pull.body ?? ''),
+    (pull) => mentions.test(pull.title),
+    (pull) => mentions.test(pull.body ?? ''),
+    // Some branch names carry the issue number: `copilot/fix-123`.
+    (pull) => new RegExp(`(^|[^0-9])${issue.number}([^0-9]|$)`).test(pull.head.ref),
   ];
 
-  for (const pattern of patterns) {
-    const match = pulls.find(
-      (pull) => pattern.test(pull.title) || pattern.test(pull.head.ref.replace(/-/g, ' ')),
-    );
+  for (const test of tests) {
+    const match = pulls.find(test);
     if (match) {
       return match;
     }
   }
 
-  // Copilot names its branches `copilot/fix-<issue>` or similar.
-  const branchMatch = pulls.find((pull) => new RegExp(`(^|[^0-9])${issue.number}([^0-9]|$)`).test(pull.head.ref));
-  return branchMatch ?? null;
+  return null;
 }
 
 /**

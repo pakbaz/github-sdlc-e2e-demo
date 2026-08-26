@@ -8,6 +8,22 @@ the room watches a spinner.
 
 ## Before you present
 
+### Once per account — the three things no script can do for you
+
+These are not part of `make setup` because GitHub exposes no API for them. Get
+them wrong and the demo *appears* to work while quietly needing a human in the
+lane that is supposed to have none.
+
+1. **A fine-grained PAT**, stored as `COPILOT_GITHUB_TOKEN`,
+   `GH_AW_GITHUB_TOKEN` and `DEMO_PAT`. See the README for the exact
+   permissions. A `gh auth token` OAuth token **will not work** — the agentic
+   engine rejects `gho_` tokens outright. `make doctor` fingerprints this.
+2. **Settings → Copilot → Cloud agent → "Require approval for workflow runs" →
+   OFF.** Left on, every agent pull request parks at *action_required* and the
+   automated lane needs someone to press a button. `make doctor` infers it.
+3. **Check the PAT's expiry** before a big session. When it lapses, triage
+   fails at its first step and nothing downstream ever starts.
+
 ### T-24 hours
 
 ```bash
@@ -55,6 +71,9 @@ while you talk. This is the single highest-value thing on this checklist.
 | The store still shows the bug after a deploy | Your browser is serving the cached page — Pages sets `max-age=600` on `index.html`. The dashboard notices this itself and offers a **Reload** button; otherwise hard-reload (`Cmd/Ctrl+Shift+R`). |
 | Copilot opens a PR then the run dies instantly | The `copilot` repository environment is missing — the agent's session targets it. `gh api -X PUT repos/OWNER/REPO/environments/copilot`, or just re-run `make setup`. `make doctor` catches this beforehand. |
 | Nothing dispatches at all — no runs, no checks | Check [githubstatus.com](https://www.githubstatus.com). During an Actions incident every lane stalls; the board and the store stay up because they read the REST API directly. |
+| An issue is fully labelled but nothing picks it up | A `labeled` webhook was dropped. `gh workflow run "Dispatch to Copilot" -f issue=NN` re-runs the handoff; it is idempotent. |
+| The agent's PR sits in draft after it finishes | `agent-pr-ready.yml` promotes it within 5 minutes. To skip the wait: `gh workflow run "Agent PR ready" -f pr=NN`, or just `gh pr ready NN`. |
+| A run on a `copilot/*` branch says *action_required* | "Require approval for workflow runs" is still on — see the once-per-account list above. Unblock this run by approving it in the Actions tab, then fix the setting before the next one. |
 | Everything breaks | `make status` in the terminal shows the same state. |
 
 ---
@@ -188,10 +207,15 @@ Walk the audience through it in this order:
 
 1. **The diff** — small, scoped, one file.
 2. **The regression test it added** — this is the part people don't expect.
-3. **The `policy-gate` comment** — 🟢 Automated lane, the changed-paths list,
+3. **The bot comment marking it ready** — the agent opened a *draft* and left
+   it in draft when it finished. A draft cannot auto-merge, so
+   `agent-pr-ready.yml` promoted it. Worth 15 seconds: this is the one seam in
+   the "no humans" claim, and naming it before someone else spots it is what
+   makes the rest of the claim believable.
+4. **The `policy-gate` comment** — 🟢 Automated lane, the changed-paths list,
    *"Auto-merge has been enabled."*
-4. **The agentic review** — findings, and the footer saying it cannot approve.
-5. **The merge box** — "0 of 0 required reviews", auto-merge armed, waiting for
+5. **The agentic review** — findings, and the footer saying it cannot approve.
+6. **The merge box** — "0 of 0 required reviews", auto-merge armed, waiting for
    `verify`.
 
 Then watch `verify` go green and **the pull request merges by itself**.

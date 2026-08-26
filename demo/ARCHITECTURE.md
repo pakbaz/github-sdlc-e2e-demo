@@ -14,11 +14,13 @@ flowchart TD
   C --> D["<code>agent/triaged</code> label<br/><i>the handoff</i>"]
   D --> E["dispatch-to-copilot.yml<br/>announces the lane,<br/>assigns via GraphQL"]
 
-  E --> F["🤖 Copilot coding agent<br/>writes the fix, adds a<br/>regression test, opens a PR"]
+  E -->   F["🤖 Copilot coding agent<br/>writes the fix, adds a<br/>regression test, opens a <b>draft</b> PR"]
 
-  F --> G["ci.yml → <code>verify</code><br/>lint · typecheck · unit<br/>· build · Playwright"]
-  F --> H["🤖 pr-review.md<br/>COMMENT or REQUEST_CHANGES<br/><b>never APPROVE</b>"]
-  F --> I["policy-gate.yml<br/>classifies changed paths"]
+  F --> R["agent-pr-ready.yml<br/>agent dropped its <code>[WIP]</code> title<br/>→ mark ready for review"]
+
+  R --> G["ci.yml → <code>verify</code><br/>lint · typecheck · unit<br/>· build · Playwright"]
+  R --> H["🤖 pr-review.md<br/>COMMENT or REQUEST_CHANGES<br/><b>never APPROVE</b>"]
+  R --> I["policy-gate.yml<br/>classifies changed paths"]
 
   I --> J{"Does the diff touch<br/>a CODEOWNERS path?"}
 
@@ -49,7 +51,8 @@ flowchart TD
 |---|---|---|---|
 | `triage.md` | agentic (`gh-aw`, Copilot) | issue opened | Reads the issue, greps the codebase, applies five labels, posts its reasoning |
 | `dispatch-to-copilot.yml` | Actions | `agent/triaged` label | Comments which lane, assigns the issue to `copilot-swe-agent` via GraphQL |
-| *(Copilot coding agent)* | GitHub-hosted | assignment | Writes the fix, adds a regression test, opens a pull request |
+| *(Copilot coding agent)* | GitHub-hosted | assignment | Writes the fix, adds a regression test, opens a **draft** pull request |
+| `agent-pr-ready.yml` | Actions | PR edited · every 5 min | The agent leaves its finished pull request in draft, and a draft cannot auto-merge. Marks it ready once the `[WIP]` title is dropped. |
 | `ci.yml` | Actions | pull request | `verify`: lint, typecheck, unit, build, Playwright. **Required check.** |
 | `pr-review.md` | agentic (`gh-aw`, Copilot) | pull request | Reviews the diff; restricted to COMMENT / REQUEST_CHANGES |
 | `policy-gate.yml` | Actions | pull request | Classifies paths, labels the PR, enables auto-merge *or* requests the code owner, posts the explainer |

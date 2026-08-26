@@ -37,6 +37,7 @@ function makePull(overrides: Partial<GhPull> = {}): GhPull {
     head: { ref: 'copilot/fix-1', sha: 'abc123' },
     base: { ref: 'main' },
     auto_merge: null,
+    body: null,
     ...overrides,
   };
 }
@@ -112,6 +113,45 @@ describe('buildPipeline', () => {
     const [card] = buildPipeline([issue], [pull], NO_DEPLOYS);
     expect(card.pull?.number).toBe(42);
     expect(card.lane).toBe('auto');
+  });
+
+  /**
+   * This is the shape the Copilot coding agent actually produces, and getting
+   * it wrong silently deleted shipped cards from the board: the title
+   * describes the fix, the branch describes the fix, and the issue number
+   * appears only in the body.
+   */
+  it('links via "Closes #N" in the body when nothing else mentions the issue', () => {
+    const issue = makeIssue({ number: 24, labels: [label('risk/low')] });
+    const pull = makePull({
+      title: 'Fix cart badge to count units instead of product lines',
+      head: { ref: 'copilot/fix-cart-badge-count', sha: 'z' },
+      body: 'The badge summed lines rather than quantities.\n\nCloses #24',
+    });
+    const [card] = buildPipeline([issue], [pull], NO_DEPLOYS);
+    expect(card.pull?.number).toBe(42);
+  });
+
+  it('keeps a shipped issue on the board instead of treating it as abandoned', () => {
+    const issue = makeIssue({ number: 24, state: 'closed', labels: [label('risk/low')] });
+    const pull = makePull({
+      title: 'Fix cart badge to count units instead of product lines',
+      head: { ref: 'copilot/fix-cart-badge-count', sha: 'z' },
+      body: 'Closes #24',
+      merged_at: '2024-01-02T00:00:00Z',
+      state: 'closed',
+    });
+    const cards = buildPipeline([issue], [pull], NO_DEPLOYS);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].stage).toBe('deployed');
+  });
+
+  it('prefers an explicit closing keyword over a passing mention', () => {
+    const issue = makeIssue({ number: 5, labels: [label('risk/low')] });
+    const mentions = makePull({ number: 90, body: 'Related to #5, but not a fix.' });
+    const closes = makePull({ number: 91, body: 'Fixes #5' });
+    const [card] = buildPipeline([issue], [mentions, closes], NO_DEPLOYS);
+    expect(card.pull?.number).toBe(91);
   });
 
   it('surfaces priority, risk and area on the card', () => {

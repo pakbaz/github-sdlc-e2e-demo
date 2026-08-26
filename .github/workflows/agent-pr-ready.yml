@@ -1,0 +1,158 @@
+name: Agent PR ready
+
+# Stage 4.5 of the pipeline — the step that keeps the automated lane automated.
+#
+# The Copilot coding agent opens its pull request immediately, as a **draft**
+# titled `[WIP] ...`, and works in the open. When it finishes it drops the
+# `[WIP]` prefix — but it leaves the pull request in draft and waits for a
+# human to press "Ready for review".
+#
+# A draft pull request cannot auto-merge. Left alone, every "zero humans"
+# change would sit there forever waiting for exactly the human the lane is
+# supposed to do without. This workflow is that missing step: it watches the
+# agent's own completion signal and flips the pull request to ready.
+#
+# It deliberately does *not* weaken any gate. Marking a pull request ready is
+# what makes it eligible for review — the `main` ruleset, CODEOWNERS and `ci`
+# all still apply, so a human-gate change becomes ready and *then* blocks on
+# its code owner.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  # Safety net. Webhooks get dropped during GitHub incidents, and one dropped
+  # `edited` event would strand a finished change in draft with nobody
+  # watching. The sweep costs seconds and makes the lane self-healing.
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to mark ready (blank = sweep all)
+        required: false
+        type: string
+
+permissions:
+  pull-requests: write
+  contents: read
+
+concurrency:
+  group: agent-pr-ready-${{ github.event.pull_request.number || inputs.pr || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  ready:
+    name: mark finished agent PRs ready
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark ready for review
+        env:
+          # Marking the pull request ready has to trigger `ready_for_review`
+          # for `policy-gate` to route it. Work done with the default
+          # GITHUB_TOKEN does not trigger other workflows, which would leave
+          # the pull request ready but unrouted.
+          GH_TOKEN: ${{ secrets.DEMO_PAT }}
+          REPO: ${{ github.repository }}
+          SINGLE: ${{ github.event.pull_request.number || inputs.pr }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::DEMO_PAT is not set. Run scripts/demo/doctor.sh."
+            exit 1
+          fi
+
+          owner="${REPO%%/*}"
+          name="${REPO#*/}"
+
+          if [ -n "${SINGLE:-}" ]; then
+            candidates="$SINGLE"
+          else
+            candidates=$(gh pr list --repo "$REPO" --state open --limit 50 \
+              --json number --jq '.[].number')
+          fi
+
+          if [ -z "$candidates" ]; then
+            echo "No open pull requests."
+            exit 0
+          fi
+
+          promoted=0
+
+          for number in $candidates; do
+            # Tab-separated so a title containing spaces survives the split.
+            IFS=$'\t' read -r is_draft author head title <<<"$(
+              gh pr view "$number" --repo "$REPO" \
+                --json isDraft,author,headRefName,title \
+                --jq '[.isDraft, .author.login, .headRefName, .title] | @tsv'
+            )" || continue
+
+            if [ "$is_draft" != "true" ]; then
+              echo "#$number is already ready."
+              continue
+            fi
+
+            # Only ever touch the coding agent's own branches. A human's draft
+            # pull request is draft because the human wants it that way.
+            case "$head" in
+              copilot/*) ;;
+              *) echo "#$number ($head) is not an agent branch — leaving it alone."
+                 continue ;;
+            esac
+
+            case "$author" in
+              Copilot|copilot-swe-agent|copilot*) ;;
+              *) echo "#$number is authored by $author, not the agent — skipping."
+                 continue ;;
+            esac
+
+            # The agent's own completion signal: it titles the pull request
+            # `[WIP] ...` while it works and drops the prefix when it is done.
+            case "$title" in
+              '[WIP]'*|'[WIP'*)
+                echo "#$number is still being written ($title)."
+                continue ;;
+            esac
+
+            echo "#$number is finished — marking ready: $title"
+
+            pr_id=$(gh api graphql \
+              -f query='
+                query($owner:String!, $name:String!, $number:Int!) {
+                  repository(owner:$owner, name:$name) {
+                    pullRequest(number:$number) { id }
+                  }
+                }' \
+              -f owner="$owner" -f name="$name" -F number="$number" \
+              --jq '.data.repository.pullRequest.id')
+
+            gh api graphql \
+              -f query='
+                mutation($id:ID!) {
+                  markPullRequestReadyForReview(input:{pullRequestId:$id}) {
+                    pullRequest { number isDraft }
+                  }
+                }' \
+              -f id="$pr_id" >/dev/null
+
+            cat > /tmp/ready.md <<'EOF'
+          🤖 The coding agent finished writing this change, so I marked it
+          **ready for review** automatically.
+
+          Nothing was waived by doing this. Marking a pull request ready is what
+          makes it *eligible* for review — the `main` ruleset,
+          `.github/CODEOWNERS` and the required `ci` check all still apply. If
+          this change touches an owned path, it now blocks on its code owner.
+          EOF
+
+            gh pr comment "$number" --repo "$REPO" --body-file /tmp/ready.md
+
+            promoted=$((promoted + 1))
+            echo "ready=$number" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          {
+            echo "## Agent PR ready"
+            echo ""
+            echo "Marked **$promoted** pull request(s) ready for review."
+          } >> "$GITHUB_STEP_SUMMARY"
