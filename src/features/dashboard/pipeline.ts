@@ -108,13 +108,29 @@ export function stageFor(
   return 'filed';
 }
 
+/**
+ * An issue that was closed without ever producing a merged pull request never
+ * went through the pipeline — it was abandoned, or cleared away by
+ * `scripts/demo/reset.sh`, which closes demo issues as "not planned".
+ *
+ * Without this, those issues fall through `stageFor` to `filed` and sit in the
+ * first column forever, so every demo after the first one starts on a board
+ * polluted with the previous run's cards. Reset has to actually reset.
+ */
+function isAbandoned(issue: GhIssue, pull: GhPull | null): boolean {
+  return issue.state === 'closed' && !pull?.merged_at;
+}
+
 export function buildPipeline(
   issues: readonly GhIssue[],
   pulls: readonly GhPull[],
   deployedShas: ReadonlySet<string>,
 ): PipelineCard[] {
-  return issues.map((issue) => {
-    const pull = findLinkedPull(issue, pulls);
+  const live = issues
+    .map((issue) => ({ issue, pull: findLinkedPull(issue, pulls) }))
+    .filter(({ issue, pull }) => !isAbandoned(issue, pull));
+
+  return live.map(({ issue, pull }) => {
     const risk = toRisk(labelValue(issue.labels, 'risk'));
     return {
       key: `issue-${issue.number}`,

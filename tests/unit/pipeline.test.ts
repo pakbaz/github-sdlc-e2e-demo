@@ -225,3 +225,44 @@ describe('refresh interval respects the API budget', () => {
     expect(polls, 'still refreshes enough times to be useful').toBeGreaterThan(5);
   });
 });
+
+/**
+ * `scripts/demo/reset.sh` closes demo issues as "not planned". If those issues
+ * kept rendering, every demo after the first would open on a board still
+ * carrying the previous run's cards — the reset would look like it had not
+ * worked, in front of an audience.
+ */
+describe('reset actually clears the board', () => {
+  it('drops an issue closed without a merged pull request', () => {
+    const abandoned = makeIssue({ number: 42, state: 'closed' });
+    expect(buildPipeline([abandoned], [], new Set())).toHaveLength(0);
+  });
+
+  it('drops a closed issue even when it was already triaged', () => {
+    const triaged = makeIssue({
+      number: 43,
+      state: 'closed',
+      labels: [label('demo'), label('risk/low'), label('priority/P3')],
+    });
+    expect(buildPipeline([triaged], [], new Set())).toHaveLength(0);
+  });
+
+  it('keeps a closed issue whose pull request actually merged', () => {
+    // This is the happy path: shipped work must stay visible as `deployed`.
+    const shipped = makeIssue({ number: 44, state: 'closed' });
+    const pull = makePull({
+      number: 90,
+      title: 'Fixes #44 — correct the cart badge',
+      merged_at: '2026-01-01T00:00:00Z',
+    });
+
+    const cards = buildPipeline([shipped], [pull], new Set([pull.head.sha]));
+    expect(cards).toHaveLength(1);
+    expect(cards[0].stage).toBe('deployed');
+  });
+
+  it('keeps open issues untouched', () => {
+    const open = makeIssue({ number: 45, state: 'open' });
+    expect(buildPipeline([open], [], new Set())).toHaveLength(1);
+  });
+});
