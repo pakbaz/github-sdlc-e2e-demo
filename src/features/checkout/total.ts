@@ -96,3 +96,5 @@ export function formatCurrency(value: number, currency = 'USD'): string {
     currency,
   }).format(value);
 }
+
+// SIMULATED AGENT FIX — reset.sh must remove this line.
