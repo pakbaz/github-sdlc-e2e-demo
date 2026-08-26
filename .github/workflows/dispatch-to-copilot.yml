@@ -1,0 +1,224 @@
+name: Dispatch to Copilot
+
+# Stage 3 of the pipeline.
+#
+# The triage agent applies `agent/triaged` as its last act. That label is the
+# handoff: this workflow picks it up, announces which lane the issue entered,
+# and assigns the issue to the Copilot coding agent.
+#
+# Assignment goes through GraphQL because the Copilot agent is a bot actor
+# rather than a user, and it needs a PAT — the default GITHUB_TOKEN cannot
+# assign it.
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number to hand to the coding agent
+        required: true
+        type: string
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: dispatch-${{ github.event.issue.number || inputs.issue }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    # Only react to the triage agent's handoff label, never to the other four.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'agent/triaged'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve issue number
+        id: issue
+        run: echo "number=${{ github.event.issue.number || inputs.issue }}" >> "$GITHUB_OUTPUT"
+
+      - name: Read labels and determine lane
+        id: lane
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.issue.outputs.number }}
+        run: |
+          set -euo pipefail
+
+          labels=$(gh issue view "$NUMBER" --repo "$REPO" --json labels \
+            --jq '.labels[].name')
+          echo "Labels on #$NUMBER:"
+          echo "$labels" | sed 's/^/  - /'
+
+          risk=$(echo "$labels" | grep '^risk/' | head -1 || true)
+          priority=$(echo "$labels" | grep '^priority/' | head -1 || true)
+          area=$(echo "$labels" | grep '^area/' | head -1 || true)
+
+          if [ -z "$risk" ]; then
+            echo "::warning::No risk/* label found; refusing to dispatch."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$risk" = "risk/low" ]; then
+            lane=auto
+          else
+            lane=human-gate
+          fi
+
+          {
+            echo "dispatch=true"
+            echo "lane=$lane"
+            echo "risk=$risk"
+            echo "priority=${priority:-unset}"
+            echo "area=${area:-unset}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Announce the lane
+        if: steps.lane.outputs.dispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.issue.outputs.number }}
+          LANE: ${{ steps.lane.outputs.lane }}
+          RISK: ${{ steps.lane.outputs.risk }}
+          PRIORITY: ${{ steps.lane.outputs.priority }}
+          AREA: ${{ steps.lane.outputs.area }}
+        run: |
+          set -euo pipefail
+
+          if [ "$LANE" = "auto" ]; then
+            cat > /tmp/comment.md <<EOF
+          ## 🟢 Routed to the automated lane
+
+          | | |
+          |---|---|
+          | Area | \`$AREA\` |
+          | Priority | \`$PRIORITY\` |
+          | Risk | \`$RISK\` |
+
+          No path involved in this fix has a code owner in
+          [\`.github/CODEOWNERS\`](../blob/main/.github/CODEOWNERS), so the
+          \`main\` ruleset requires **zero approvals**.
+
+          Handing this to the Copilot coding agent now. When it opens a pull
+          request, \`ci\` runs; if it is green, \`policy-gate\` enables
+          auto-merge and the change deploys itself to production.
+
+          **No human will touch this change.** Watch it on the
+          [pipeline board](https://$GITHUB_REPOSITORY_OWNER.github.io/${REPO#*/}/#/pipeline).
+          EOF
+          else
+            cat > /tmp/comment.md <<EOF
+          ## 🛑 Routed to the human gate
+
+          | | |
+          |---|---|
+          | Area | \`$AREA\` |
+          | Priority | \`$PRIORITY\` |
+          | Risk | \`$RISK\` |
+
+          A fix for this touches a path owned by a code owner in
+          [\`.github/CODEOWNERS\`](../blob/main/.github/CODEOWNERS). The
+          \`main\` ruleset requires **a code owner's approval**, so the merge
+          button stays disabled until a human reviews it.
+
+          Handing this to the Copilot coding agent now. It will write the fix
+          and open a pull request, \`ci\` will run, and the agentic reviewer
+          will comment — but the reviewer is restricted to \`COMMENT\` and
+          \`REQUEST_CHANGES\` and **cannot approve its own work**.
+
+          Watch it on the
+          [pipeline board](https://$GITHUB_REPOSITORY_OWNER.github.io/${REPO#*/}/#/pipeline).
+          EOF
+          fi
+
+          gh issue comment "$NUMBER" --repo "$REPO" --body-file /tmp/comment.md
+
+      - name: Assign to the Copilot coding agent
+        if: steps.lane.outputs.dispatch == 'true'
+        env:
+          # The default GITHUB_TOKEN cannot assign a bot actor, and work it
+          # creates would not trigger downstream workflows.
+          GH_TOKEN: ${{ secrets.DEMO_PAT }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.issue.outputs.number }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::DEMO_PAT is not set. Run scripts/demo/doctor.sh."
+            exit 1
+          fi
+
+          owner="${REPO%%/*}"
+          name="${REPO#*/}"
+
+          # The Copilot agent is exposed as a suggested actor, not as a normal
+          # user, so its node id has to be looked up per repository.
+          bot_id=$(gh api graphql \
+            -H 'GraphQL-Features: issues_copilot_assignment_api_support' \
+            -f query='
+              query($owner:String!, $name:String!) {
+                repository(owner:$owner, name:$name) {
+                  suggestedActors(capabilities:[CAN_BE_ASSIGNED], first:100) {
+                    nodes { login __typename ... on Bot { id } ... on User { id } }
+                  }
+                }
+              }' \
+            -f owner="$owner" -f name="$name" \
+            --jq '.data.repository.suggestedActors.nodes[]
+                  | select(.login == "copilot-swe-agent") | .id')
+
+          if [ -z "$bot_id" ]; then
+            echo "::error::copilot-swe-agent is not assignable in $REPO."
+            exit 1
+          fi
+          echo "Copilot coding agent node id: $bot_id"
+
+          issue_id=$(gh api graphql \
+            -f query='
+              query($owner:String!, $name:String!, $number:Int!) {
+                repository(owner:$owner, name:$name) {
+                  issue(number:$number) { id }
+                }
+              }' \
+            -f owner="$owner" -f name="$name" -F number="$NUMBER" \
+            --jq '.data.repository.issue.id')
+
+          gh api graphql \
+            -H 'GraphQL-Features: issues_copilot_assignment_api_support' \
+            -f query='
+              mutation($assignableId:ID!, $actorIds:[ID!]!) {
+                replaceActorsForAssignable(
+                  input:{ assignableId:$assignableId, actorIds:$actorIds }
+                ) {
+                  assignable {
+                    ... on Issue { number assignees(first:10){ nodes { login } } }
+                  }
+                }
+              }' \
+            -f assignableId="$issue_id" -f actorIds="$bot_id"
+
+          echo "Assigned issue #$NUMBER to the Copilot coding agent."
+
+      - name: Summary
+        if: always()
+        env:
+          NUMBER: ${{ steps.issue.outputs.number }}
+          LANE: ${{ steps.lane.outputs.lane }}
+          RISK: ${{ steps.lane.outputs.risk }}
+        run: |
+          {
+            echo "## Dispatch"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Issue | #${NUMBER} |"
+            echo "| Risk | \`${RISK:-none}\` |"
+            echo "| Lane | ${LANE:-not dispatched} |"
+          } >> "$GITHUB_STEP_SUMMARY"

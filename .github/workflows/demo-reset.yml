@@ -1,0 +1,137 @@
+name: Demo · reset
+
+# Returns the repository to the `demo-baseline` state so the demo can be run
+# again from zero. Safe by construction: it only touches issues labelled
+# `demo`, open pull requests, and `copilot/*` branches.
+
+on:
+  workflow_dispatch:
+    inputs:
+      reseed:
+        description: File the scenario issues again after resetting
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Close pull requests
+        env:
+          GH_TOKEN: ${{ secrets.DEMO_PAT || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for n in $(gh pr list --repo "$REPO" --state open --limit 100 \
+                       --json number --jq '.[].number'); do
+            gh pr close "$n" --repo "$REPO" --delete-branch \
+              && echo "closed #$n" || echo "::warning::could not close #$n"
+          done
+
+      - name: Close demo issues
+        env:
+          GH_TOKEN: ${{ secrets.DEMO_PAT || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for n in $(gh issue list --repo "$REPO" --state open --limit 100 \
+                       --label demo --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "$REPO" --reason "not planned" \
+              && echo "closed #$n" || true
+          done
+          # gh-aw opens an issue when an agentic run fails; clear those too.
+          for n in $(gh issue list --repo "$REPO" --state open --limit 100 \
+                       --search 'in:title "Agentic workflow"' \
+                       --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "$REPO" --reason "not planned" || true
+          done
+
+      - name: Delete agent branches
+        env:
+          GH_TOKEN: ${{ secrets.DEMO_PAT || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for b in $(gh api "repos/$REPO/branches?per_page=100" --jq '.[].name'); do
+            case "$b" in
+              copilot/*|agentic-*|demo-fix/*)
+                gh api -X DELETE "repos/$REPO/git/refs/heads/$b" >/dev/null 2>&1 \
+                  && echo "deleted $b" || true
+                ;;
+            esac
+          done
+
+      - name: Restore src/ and infra/ from the baseline
+        env:
+          GH_TOKEN: ${{ secrets.DEMO_PAT || github.token }}
+          REPO: ${{ github.repository }}
+          TAG: demo-baseline
+        run: |
+          set -euo pipefail
+
+          if ! git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::warning::tag $TAG not found; nothing to restore"
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Only the paths the demo mutates. Documentation and workflow
+          # improvements made since the baseline are preserved on purpose.
+          changed=$(git diff --name-only "$TAG" HEAD -- src infra tests || true)
+          if [ -z "$changed" ]; then
+            echo "Already at baseline for src/, infra/ and tests/."
+            exit 0
+          fi
+
+          echo "Restoring:"; echo "$changed" | sed 's/^/  /'
+          git checkout "$TAG" -- src infra tests
+
+          if git diff --cached --quiet && git diff --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+
+          git add -A src infra tests
+          git commit -m "chore(demo): reset src/, infra/ and tests/ to $TAG"
+          git push origin HEAD:main
+          echo "main restored to the baseline."
+
+      - name: Seed again
+        if: inputs.reseed
+        env:
+          GH_TOKEN: ${{ secrets.DEMO_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for id in ui checkout auth infra api; do
+            title=$(head -1 "demo/scenarios/$id.md")
+            tail -n +3 "demo/scenarios/$id.md" > /tmp/body.md
+            gh issue create --repo "$REPO" --title "$title" \
+              --body-file /tmp/body.md --label demo
+            sleep 3
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Reset complete"
+            echo ""
+            echo "Demo issues closed, pull requests closed, agent branches"
+            echo "deleted, and \`src/\`, \`infra/\` and \`tests/\` restored to"
+            echo "\`demo-baseline\`."
+          } >> "$GITHUB_STEP_SUMMARY"

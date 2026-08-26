@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Test output
+playwright-report/
+test-results/
+coverage/
+
+# Tooling scratch
+.playwright-mcp/
+.impeccable/
+*.local
+
+# Editor
+.DS_Store
+.idea/
+
+# Local env
+.env
+.env.*
+!.env.example

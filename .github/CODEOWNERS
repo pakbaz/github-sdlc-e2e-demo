@@ -1,0 +1,66 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CODEOWNERS — the human gate for the Agentic SDLC demo
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# This file, combined with the `main` branch ruleset, is what makes the demo
+# real. The ruleset is configured as:
+#
+#     required_approving_review_count : 0
+#     require_code_owner_review       : true
+#     required status check           : ci
+#
+# Consequences:
+#
+#   • A pull request touching ONLY paths with no owner below needs ZERO
+#     approvals. CI passes, auto-merge fires, and it deploys itself. No human
+#     is involved at any point.
+#
+#   • A pull request touching ANY owned path below requires that owner's
+#     approval. GitHub blocks the merge button. No workflow, no token and no
+#     agent can bypass it — including the agent that opened the pull request.
+#
+# The omissions are as deliberate as the entries. `src/features/ui/`,
+# `src/features/checkout/`, `src/styles/`, `demo/` and `tests/` have NO owner,
+# because presentation code and pure, well-tested functions do not need a human
+# to look at a one-line fix at 3am.
+#
+# Risk decides who has to say yes — not priority.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ── Identity and sessions ───────────────────────────────────────────────────
+# A wrong change here either locks every customer out, or lets revoked and
+# expired sessions keep working. Always gated.
+/src/features/auth/          @pakbaz
+
+# ── Shared transport ────────────────────────────────────────────────────────
+# Used by every feature. Timeout and retry changes propagate everywhere at
+# once, so a human confirms the blast radius.
+/src/features/api/           @pakbaz
+
+# ── Infrastructure as code ──────────────────────────────────────────────────
+# Data exposure and availability. Cannot be rolled back by reverting a render.
+/infra/                      @pakbaz
+
+# ── The automation itself ───────────────────────────────────────────────────
+# Anything able to edit the pipeline can disable its own guardrails. This is
+# the most important line in the file: it stops an agent from widening its own
+# permissions, editing the policy gate, or removing this very file.
+/.github/                    @pakbaz
+
+# ── Dependency and build surface ────────────────────────────────────────────
+# Supply chain. A new transitive dependency deserves a human.
+/package.json                @pakbaz
+/package-lock.json           @pakbaz
+/vite.config.ts              @pakbaz
+/playwright.config.ts        @pakbaz
+
+
+# ── Intentionally UNOWNED (the automated lane) ──────────────────────────────
+#   /src/features/ui/            presentation only
+#   /src/features/checkout/      pure, fully unit-tested money maths
+#   /src/features/dashboard/     read-only visualisation
+#   /src/styles/                 CSS
+#   /tests/                      test coverage
+#   /demo/                       documentation
+#   /README.md                   documentation

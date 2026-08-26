@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a defect. An agentic workflow will triage it within a minute.
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        When you submit this, an agentic workflow reads it and applies
+        `area/*`, `priority/*` and `risk/*` labels, then explains its
+        reasoning in a comment. **Risk** decides whether the fix can ship
+        itself or has to wait for a human code owner.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What is broken?
+      description: One or two sentences.
+      placeholder: The cart badge shows 1 when there are three items in the cart.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Exact steps, with concrete numbers wherever possible.
+      placeholder: |
+        1. Open the store
+        2. Add three Cirrus Mugs
+        3. Observe the badge reads "1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Customer impact
+      description: This informs priority. It does not decide the review gate.
+      options:
+        - Cosmetic — nobody is blocked
+        - Degraded — a workflow is harder than it should be
+        - Broken — a workflow cannot be completed
+        - Critical — customers are losing money, data, or access
+    validations:
+      required: true
+
+  - type: input
+    id: area
+    attributes:
+      label: Suspected area (optional)
+      description: A file or directory, if you know it. The triage agent will verify.
+      placeholder: src/features/checkout/total.ts

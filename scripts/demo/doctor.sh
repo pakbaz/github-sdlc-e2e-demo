@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+#
+# doctor.sh — pre-flight check. Run this before every demo.
+#
+# Exits non-zero if anything that would break the demo on stage is wrong.
+#
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+# shellcheck source=lib.sh
+. scripts/demo/lib.sh
+
+need_gh
+
+PROBLEMS=0
+bad() { fail "$1"; PROBLEMS=$((PROBLEMS + 1)); }
+
+title "Pre-flight for $REPO"
+
+# ── Tooling ──────────────────────────────────────────────────────────────────
+step "Tooling"
+ok "gh $(gh --version | head -1 | awk '{print $3}') as $(gh api user --jq .login)"
+if gh aw version >/dev/null 2>&1; then
+  ok "gh-aw $(gh aw version 2>/dev/null | head -1)"
+else
+  bad "gh-aw extension missing — gh extension install githubnext/gh-aw"
+fi
+if command -v node >/dev/null 2>&1; then
+  ok "node $(node --version)"
+else
+  bad "node is not installed"
+fi
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+step "Secrets"
+secrets=$(gh secret list --repo "$REPO" --json name --jq '.[].name' 2>/dev/null || true)
+for s in COPILOT_GITHUB_TOKEN GH_AW_GITHUB_TOKEN DEMO_PAT; do
+  if echo "$secrets" | grep -qxF "$s"; then ok "$s"; else bad "$s is not set (see setup.sh)"; fi
+done
+
+# ── Repository settings ──────────────────────────────────────────────────────
+step "Repository settings"
+repo_json=$(gh api "repos/$REPO")
+[ "$(echo "$repo_json" | jq -r .allow_auto_merge)" = "true" ] \
+  && ok "auto-merge enabled" || bad "auto-merge is disabled — the auto lane cannot ship"
+[ "$(echo "$repo_json" | jq -r .has_issues)" = "true" ] \
+  && ok "issues enabled" || bad "issues are disabled"
+[ "$(echo "$repo_json" | jq -r .private)" = "false" ] \
+  && ok "public (the dashboard reads the API anonymously)" \
+  || warn "private — the dashboard will need a token pasted in"
+
+perms=$(gh api "repos/$REPO/actions/permissions/workflow" 2>/dev/null || echo '{}')
+[ "$(echo "$perms" | jq -r .default_workflow_permissions)" = "write" ] \
+  && ok "Actions have write permissions" \
+  || bad "Actions are read-only — workflows cannot label or comment"
+
+# ── Ruleset — the gate ───────────────────────────────────────────────────────
+step "Branch ruleset (this is the gate)"
+rs=$(gh api "repos/$REPO/rulesets" --jq '.[] | select(.name == "demo-main-gate") | .id' 2>/dev/null || true)
+if [ -z "$rs" ]; then
+  bad "demo-main-gate ruleset is missing — run setup.sh"
+else
+  detail=$(gh api "repos/$REPO/rulesets/$rs")
+  [ "$(echo "$detail" | jq -r .enforcement)" = "active" ] \
+    && ok "demo-main-gate is active" || bad "demo-main-gate exists but is not active"
+
+  pr_rule=$(echo "$detail" | jq '.rules[] | select(.type == "pull_request") | .parameters')
+  if [ -n "$pr_rule" ]; then
+    approvals=$(echo "$pr_rule" | jq -r .required_approving_review_count)
+    codeowner=$(echo "$pr_rule" | jq -r .require_code_owner_review)
+    [ "$approvals" = "0" ] \
+      && ok "required approvals = 0 (so unowned paths need nobody)" \
+      || bad "required approvals = $approvals — the auto lane will be blocked"
+    [ "$codeowner" = "true" ] \
+      && ok "code owner review required (so owned paths need a human)" \
+      || bad "code owner review is not required — the human gate is open"
+  else
+    bad "demo-main-gate has no pull_request rule"
+  fi
+
+  checks=$(echo "$detail" | jq -r '.rules[] | select(.type == "required_status_checks")
+            | .parameters.required_status_checks[].context' 2>/dev/null || true)
+  echo "$checks" | grep -qxF "verify" \
+    && ok "'verify' is a required status check" \
+    || warn "'verify' is not required — merges will not wait for CI"
+
+  bypass=$(echo "$detail" | jq -r '.bypass_actors | length')
+  [ "$bypass" -gt 0 ] \
+    && ok "$bypass bypass actor(s) — reset.sh can restore main" \
+    || warn "no bypass actors — reset.sh cannot rewrite main"
+fi
+
+# ── CODEOWNERS ───────────────────────────────────────────────────────────────
+step "CODEOWNERS"
+if [ -f .github/CODEOWNERS ]; then
+  for p in /src/features/auth/ /src/features/api/ /infra/ /.github/; do
+    grep -q "^$p" .github/CODEOWNERS && ok "$p is owned" || bad "$p has no owner"
+  done
+  for p in "src/features/ui/" "src/features/checkout/"; do
+    grep -qE "^/?$p" .github/CODEOWNERS \
+      && bad "$p IS owned — the automated lane will be blocked" \
+      || ok "$p is deliberately unowned"
+  done
+else
+  bad ".github/CODEOWNERS is missing"
+fi
+
+# ── Labels ───────────────────────────────────────────────────────────────────
+step "Labels"
+have=$(gh label list --repo "$REPO" --limit 200 --json name --jq '.[].name' || true)
+missing=0
+while IFS='|' read -r name _ _; do
+  [ -n "$name" ] || continue
+  echo "$have" | grep -qxF "$name" || { missing=$((missing + 1)); info "missing: $name"; }
+done < <(demo_labels)
+[ "$missing" -eq 0 ] && ok "all $(demo_labels | wc -l | tr -d ' ') labels present" \
+  || bad "$missing label(s) missing — run setup.sh"
+
+# ── Workflows ────────────────────────────────────────────────────────────────
+step "Workflows on the default branch"
+wf=$(gh api "repos/$REPO/actions/workflows" --jq '.workflows[] | [.name, .state] | @tsv' 2>/dev/null || true)
+for expect in "Risk-based issue triage" "Agentic pull request review" "Dispatch to Copilot" "ci" "Policy gate" "Deploy to Pages"; do
+  line=$(echo "$wf" | grep -iF "$expect" | head -1 || true)
+  if [ -z "$line" ]; then
+    bad "workflow '$expect' is not on main"
+  elif echo "$line" | grep -q "active"; then
+    ok "$expect"
+  else
+    bad "$expect is $(echo "$line" | cut -f2)"
+  fi
+done
+
+# ── Copilot coding agent ─────────────────────────────────────────────────────
+step "Copilot coding agent"
+assignable=$(gh api graphql \
+  -H 'GraphQL-Features: issues_copilot_assignment_api_support' \
+  -f query='query($o:String!,$n:String!){repository(owner:$o,name:$n){
+      suggestedActors(capabilities:[CAN_BE_ASSIGNED],first:100){nodes{login}}}}' \
+  -f o="$OWNER" -f n="$NAME" \
+  --jq '.data.repository.suggestedActors.nodes[].login' 2>/dev/null || true)
+echo "$assignable" | grep -qxF "copilot-swe-agent" \
+  && ok "copilot-swe-agent is assignable" \
+  || bad "copilot-swe-agent is NOT assignable — check the Copilot subscription"
+
+# ── Pages ────────────────────────────────────────────────────────────────────
+step "GitHub Pages"
+if pages=$(gh api "repos/$REPO/pages" 2>/dev/null); then
+  url=$(echo "$pages" | jq -r .html_url)
+  ok "$url"
+  [ "$(echo "$pages" | jq -r .build_type)" = "workflow" ] \
+    && ok "source: GitHub Actions" || warn "source is not GitHub Actions"
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$url" || echo 000)
+  [ "$code" = "200" ] && ok "site responds 200" || warn "site returned HTTP $code"
+else
+  bad "Pages is not enabled — run setup.sh"
+fi
+
+# ── Baseline ─────────────────────────────────────────────────────────────────
+step "Baseline"
+if sha=$(gh api "repos/$REPO/git/ref/tags/$BASELINE_TAG" --jq '.object.sha' 2>/dev/null); then
+  ok "$BASELINE_TAG → ${sha:0:7}"
+else
+  bad "$BASELINE_TAG tag is missing — reset.sh cannot restore"
+fi
+
+# ── Clean slate ──────────────────────────────────────────────────────────────
+step "Clean slate"
+open_demo=$(gh issue list --repo "$REPO" --state open --label "$DEMO_LABEL" \
+  --json number --jq 'length' 2>/dev/null || echo 0)
+open_prs=$(gh pr list --repo "$REPO" --state open --json number --jq 'length' 2>/dev/null || echo 0)
+[ "$open_demo" = "0" ] && ok "no open demo issues" \
+  || warn "$open_demo open demo issue(s) — run reset.sh for a clean start"
+[ "$open_prs" = "0" ] && ok "no open pull requests" \
+  || warn "$open_prs open pull request(s) — run reset.sh for a clean start"
+
+# ── Verdict ──────────────────────────────────────────────────────────────────
+if [ "$PROBLEMS" -eq 0 ]; then
+  title "Ready to demo"
+  printf '  %shttps://%s.github.io/%s/#/pipeline%s\n\n' "$BOLD" "$OWNER" "$NAME" "$RESET"
+  exit 0
+else
+  title "$PROBLEMS problem(s) found"
+  printf '  Most are fixed by %s./scripts/demo/setup.sh%s\n\n' "$BOLD" "$RESET"
+  exit 1
+fi

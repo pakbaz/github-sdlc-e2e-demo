@@ -1,0 +1,73 @@
+name: Deploy to Pages
+
+# Stage 7 — production.
+#
+# Every merge to `main` publishes the storefront and the live pipeline
+# dashboard to GitHub Pages. For the automated lane this is the moment a
+# change reaches production without any human having looked at it.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        env:
+          # Pages serves this project from /<repo>/, so assets need that prefix.
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_REPO_OWNER: ${{ github.repository_owner }}
+          VITE_REPO_NAME: ${{ github.event.repository.name }}
+        run: npm run build
+
+      - name: Add SPA fallback
+        # The dashboard uses hash routing, but a 404.html means a stale deep
+        # link never shows GitHub's default error page mid-demo.
+        run: cp dist/index.html dist/404.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Summary
+        run: |
+          {
+            echo "## Deployed to production"
+            echo ""
+            echo "${{ steps.deployment.outputs.page_url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
