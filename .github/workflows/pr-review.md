@@ -27,20 +27,27 @@ tools:
     min-integrity: none
 
 safe-outputs:
+  # Post as github-actions[bot], not as whoever owns GH_AW_GITHUB_TOKEN.
+  #
+  # gh-aw resolves tokens `github-token` → `GH_AW_GITHUB_TOKEN` →
+  # `GITHUB_TOKEN`. Without this the review lands under the PAT owner's name
+  # and avatar — a *human's* name and face, on the review of a change that is
+  # supposedly still waiting for a human. The footer says "automated review";
+  # nobody reads the footer when there is an avatar right next to it.
+  #
+  # This has to sit here, at the safe-outputs level, where it sets the token on
+  # the whole `Process Safe Outputs` step. Setting it on the individual output
+  # below compiles and looks right, but the step still authenticates with
+  # `GH_AW_GITHUB_TOKEN` and the review still posts as the human. Verified on a
+  # real pull request, twice.
+  #
+  # Nothing here needs to trigger a downstream workflow — the only reason to
+  # want the PAT — so the default token is strictly better.
+  github-token: ${{ secrets.GITHUB_TOKEN }}
+
   submit-pull-request-review:
     allowed-events: [COMMENT, REQUEST_CHANGES]
     max: 1
-    # Post as github-actions[bot], not as whoever owns GH_AW_GITHUB_TOKEN.
-    #
-    # gh-aw resolves tokens `github-token` → `GH_AW_GITHUB_TOKEN` →
-    # `GITHUB_TOKEN`, so without this the review appears under the PAT owner's
-    # name and avatar — a *human's* name, on the review of a change that is
-    # supposed to still be waiting for a human. The footer says "automated",
-    # but the avatar says otherwise, and in a demo the avatar wins.
-    #
-    # Nothing here needs to trigger another workflow, so the default token is
-    # the right one.
-    github-token: ${{ secrets.GITHUB_TOKEN }}
 ---
 
 # Agentic pull request review
