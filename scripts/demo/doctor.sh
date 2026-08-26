@@ -203,6 +203,35 @@ fi
 step "Baseline"
 if sha=$(gh api "repos/$REPO/git/ref/tags/$BASELINE_TAG" --jq '.object.sha' 2>/dev/null); then
   ok "$BASELINE_TAG → ${sha:0:7}"
+
+  # reset.sh restores src/, infra/ and tests/ from this tag, so the tag has to
+  # be the state where the defects still exist. Move it onto a post-demo main
+  # — an easy mistake, because moving a baseline tag forward feels like
+  # housekeeping — and reset silently starts restoring the *fixed* code. The
+  # next demo then triages an issue describing a bug that is not there, the
+  # coding agent finds nothing to do, and it all falls apart in front of an
+  # audience.
+  #
+  # Every planted defect is marked with a `BUG:` comment, so counting them at
+  # the tag is a cheap, direct test of "is there still something to fix".
+  planted=0
+  for file in src/features/ui/cart.ts src/features/auth/session.ts \
+              src/features/checkout/total.ts src/features/api/client.ts \
+              infra/main.tf; do
+    if gh api "repos/$REPO/contents/$file?ref=$BASELINE_TAG" \
+         --jq '.content' 2>/dev/null | base64 --decode 2>/dev/null \
+         | grep -q 'BUG:'; then
+      planted=$((planted + 1))
+    else
+      warn "no planted defect in $file at $BASELINE_TAG"
+    fi
+  done
+
+  if [ "$planted" -eq 5 ]; then
+    ok "all 5 scenarios still have their defect at $BASELINE_TAG"
+  else
+    bad "$BASELINE_TAG has only $planted/5 planted defects — reset.sh would restore already-fixed code and the demo would have nothing to fix. Point the tag back at a commit that still carries the defects."
+  fi
 else
   bad "$BASELINE_TAG tag is missing — reset.sh cannot restore"
 fi
