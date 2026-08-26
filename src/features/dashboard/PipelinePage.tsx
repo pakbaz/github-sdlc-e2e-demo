@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadRepoSnapshot, type RepoSnapshot } from './github';
 import { buildPipeline, groupByStage, STAGE_META, STAGES, type PipelineCard } from './pipeline';
-import { repoSlug, repoUrl } from '../../config';
+import { repoSlug, repoUrl, buildSha } from '../../config';
 import { refreshIntervalMs, describeInterval } from './refresh';
+import { staleAgainst, shortSha } from './staleness';
 
 const TOKEN_KEY = 'nimbus.dashboard.token';
 
@@ -18,7 +19,8 @@ function timeAgo(iso: string | Date): string {
 }
 
 
-function runTone(run: { status: string; conclusion: string | null }): string {  if (run.status !== 'completed') return 'running';
+function runTone(run: { status: string; conclusion: string | null }): string {
+  if (run.status !== 'completed') return 'running';
   if (run.conclusion === 'success') return 'success';
   if (run.conclusion === 'cancelled' || run.conclusion === 'skipped') return 'muted';
   return 'failure';
@@ -82,6 +84,11 @@ export function PipelinePage() {
 
   const rateLimited = snapshot?.rateLimit.remaining === 0;
 
+  const shippedSha = useMemo(
+    () => staleAgainst(buildSha, snapshot?.deployments ?? []),
+    [snapshot],
+  );
+
   return (
     <div className="pipeline">
       <section className="pipeline__head">
@@ -123,6 +130,25 @@ export function PipelinePage() {
           </button>
         </div>
       </section>
+
+      {shippedSha && (
+        <section className="shipped" role="status">
+          <span className="shipped__pulse" aria-hidden="true" />
+          <p className="shipped__text">
+            <strong>A newer build just shipped to production.</strong> You are running{' '}
+            <code>{shortSha(buildSha)}</code>, production is now{' '}
+            <code>{shortSha(shippedSha)}</code>. GitHub Pages caches the page for ten minutes, so
+            reload to see the change.
+          </p>
+          <button
+            type="button"
+            className="button button--small"
+            onClick={() => window.location.reload()}
+          >
+            Reload
+          </button>
+        </section>
+      )}
 
       <section className="lanes" aria-label="Lane summary">
         <article className="lane lane--auto">
