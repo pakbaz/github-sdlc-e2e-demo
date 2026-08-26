@@ -34,6 +34,11 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Workflow shell syntax
+        # A `run:` block can be valid YAML and still be broken shell. Actions
+        # would only find out mid-deploy, so check it here instead.
+        run: ./scripts/ci/check-workflows.sh
+
       - name: Lint
         run: npm run lint
 
