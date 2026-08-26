@@ -52,7 +52,8 @@ jobs:
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
         run: |
-          cat > dist/404.html <<'HTML'          <!doctype html>
+          cat > dist/404.tmpl <<'HTML'
+          <!doctype html>
           <html lang="en">
             <head>
               <meta charset="utf-8" />
@@ -72,7 +73,10 @@ jobs:
             </body>
           </html>
           HTML
-          sed -i "s|__BASE__|${VITE_BASE_PATH}|g" dist/404.html
+          # Not `sed -i`: its argument handling differs between GNU and BSD,
+          # which would make this step impossible to test outside the runner.
+          sed "s|__BASE__|${VITE_BASE_PATH}|g" dist/404.tmpl > dist/404.html
+          rm dist/404.tmpl
 
       - uses: actions/configure-pages@v5
 
