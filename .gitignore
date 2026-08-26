@@ -23,3 +23,6 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Stray Playwright MCP snapshots written to the repo root
+board-check.yml

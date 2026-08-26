@@ -72,8 +72,7 @@ async function stubGitHub(page: Page) {
       ]);
     }
 
-    if (url.includes('/pulls')) return json([]);
-    if (url.includes('/actions/runs')) {
+    if (url.includes('/pulls')) return json([]);    if (url.includes('/actions/runs')) {
       return json({
         workflow_runs: [
           {
@@ -92,7 +91,15 @@ async function stubGitHub(page: Page) {
         ],
       });
     }
-    if (url.includes('/deployments')) return json([]);
+    if (url.includes('/deployments'))
+      return json([
+        {
+          id: 9,
+          environment: 'github-pages',
+          created_at: '2024-06-01T00:00:00Z',
+          sha: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+        },
+      ]);
     return json([]);
   });
 }
@@ -137,6 +144,18 @@ test.describe('SDLC control tower', () => {
     const runs = page.getByRole('region', { name: 'Recent workflow runs' });
     await expect(runs.getByRole('link', { name: 'CI' })).toBeVisible();
     await expect(runs.getByText('success')).toBeVisible();
+  });
+
+  /**
+   * The "a newer build shipped" banner exists to rescue a stale tab, but a
+   * banner that cries wolf every time the presenter opens the dashboard would
+   * be worse than the problem it solves. A build with no compiled-in SHA
+   * cannot be out of date, even though production reports a different one.
+   */
+  test('does not nag about a stale build when there is no build sha', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: 'SDLC control tower' })).toBeVisible();
+    await expect(page.getByRole('status')).toHaveCount(0);
+    await expect(page.getByText(/newer build just shipped/)).toHaveCount(0);
   });
 });
 

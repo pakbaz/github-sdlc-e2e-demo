@@ -10,3 +10,9 @@ export const demoConfig = {
 export const repoSlug = `${demoConfig.owner}/${demoConfig.repo}`;
 export const repoUrl = `https://github.com/${repoSlug}`;
 export const apiBase = `https://api.github.com/repos/${repoSlug}`;
+
+/**
+ * The commit this bundle was built from, injected by the deploy workflow.
+ * Lets the running app notice when a newer build has shipped to production.
+ */
+export const buildSha = import.meta.env.VITE_BUILD_SHA ?? 'dev';

@@ -1142,3 +1142,60 @@ h3 {
 .scenario__lane--human-gate {
   color: var(--gate);
 }
+
+/* ---------------------------------------------------------------------------
+   "A newer build shipped" banner.
+
+   Pages caches index.html for ten minutes, so after a deploy the browser can
+   keep running the previous bundle. The app compares its compiled-in build SHA
+   with the newest github-pages deployment and says so out loud.
+   --------------------------------------------------------------------------- */
+.shipped {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0 0 1.4rem;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent-soft);
+}
+
+.shipped__pulse {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+  animation: shipped-pulse 1.8s ease-out infinite;
+}
+
+.shipped__text {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.shipped__text code {
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+@keyframes shipped-pulse {
+  70% {
+    box-shadow: 0 0 0 9px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shipped__pulse {
+    animation: none;
+  }
+}
