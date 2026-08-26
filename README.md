@@ -109,6 +109,17 @@ happen while you are talking.
   without it the auto lane merges and never deploys.
 - A repository environment named `copilot`. `make setup` creates it; without it
   the coding agent opens its pull request and the run dies immediately.
+- **Settings → Copilot → Cloud agent → "Require approval for workflow runs" must
+  be OFF.** There is no API for it, so `make setup` cannot do it for you and
+  `make doctor` checks it the only way it can — by noticing runs on `copilot/*`
+  branches sitting at `action_required`.
+
+  Left on, every agent pull request stops dead waiting for someone to press
+  *Approve and run workflows*. The demo still works, but the automated lane
+  quietly stops being automated, which is the one claim the whole hour rests on.
+  This is a real security trade-off — it lets agent-authored code run workflows
+  with your repository's secrets — and it is only appropriate because this is a
+  throwaway demo repository. Do not copy it into anything that matters.
 
 ## What is in here
 
@@ -121,6 +132,7 @@ happen while you are talking.
 | `.github/workflows/triage.md` | Agentic triage — reads the issue, greps the code, labels it, explains itself |
 | `.github/workflows/pr-review.md` | Agentic review — can comment and request changes, never approve |
 | `.github/workflows/policy-gate.yml` | Independent path classification + the explainer comment |
+| `.github/workflows/agent-pr-ready.yml` | Takes the agent's finished pull request out of draft, so the automated lane needs no human |
 | `src/features/dashboard/` | The live board that visualises this repository's own pipeline |
 | `scripts/demo/` | `doctor` · `setup` · `seed` · `reset` · `status` |
 
