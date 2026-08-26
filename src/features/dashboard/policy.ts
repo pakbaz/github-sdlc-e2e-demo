@@ -35,7 +35,17 @@ export const AREA_POLICIES: readonly AreaPolicy[] = [
   {
     area: 'ui',
     label: 'area/ui',
-    paths: ['src/features/ui/', 'src/styles/', 'src/features/dashboard/'],
+    paths: [
+      'src/features/ui/',
+      'src/styles/',
+      'src/features/dashboard/',
+      'public/',
+      'index.html',
+      'src/App.tsx',
+      'src/main.tsx',
+      'src/config.ts',
+      'src/vite-env.d.ts',
+    ],
     risk: 'low',
     codeowner: false,
     rationale:
@@ -82,15 +92,22 @@ export const AREA_POLICIES: readonly AreaPolicy[] = [
     label: 'area/pipeline',
     paths: [
       '.github/',
+      'scripts/',
       'package.json',
       'package-lock.json',
       'vite.config.ts',
       'playwright.config.ts',
+      'eslint.config.js',
+      'tsconfig.json',
+      'tsconfig.app.json',
+      'tsconfig.node.json',
+      'Makefile',
+      '.gitattributes',
     ],
     risk: 'high',
     codeowner: true,
     rationale:
-      'The automation itself, plus the dependency and build surface. Anything able to edit the pipeline can disable its own guardrails, so it is always gated.',
+      'The automation itself, plus the dependency, build and demo-control surface. Anything able to edit the pipeline can disable its own guardrails, so it is always gated.',
   },
   {
     area: 'docs',

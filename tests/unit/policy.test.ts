@@ -83,8 +83,10 @@ describe('routing policy', () => {
   });
 
   it('fails closed on paths it does not recognise', () => {
-    const result = classifyChangedFiles(['scripts/deploy-to-prod.sh']);
-    expect(result.unmatched).toContain('scripts/deploy-to-prod.sh');
+    // A path no policy claims — e.g. somebody adds a server tier tomorrow.
+    // It must land in the human gate rather than quietly shipping itself.
+    const result = classifyChangedFiles(['server/index.js']);
+    expect(result.unmatched).toContain('server/index.js');
     expect(result.lane).toBe('human-gate');
   });
 

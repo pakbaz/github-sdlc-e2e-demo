@@ -48,12 +48,23 @@
 # permissions, editing the policy gate, or removing this very file.
 /.github/                    @pakbaz
 
+# ── The demo control plane ──────────────────────────────────────────────────
+# setup/seed/reset/doctor drive the repository settings and the branch
+# ruleset. Anything able to rewrite these can turn the gate off.
+/scripts/                    @pakbaz
+/Makefile                    @pakbaz
+
 # ── Dependency and build surface ────────────────────────────────────────────
 # Supply chain. A new transitive dependency deserves a human.
 /package.json                @pakbaz
 /package-lock.json           @pakbaz
 /vite.config.ts              @pakbaz
 /playwright.config.ts        @pakbaz
+/eslint.config.js            @pakbaz
+/tsconfig.json               @pakbaz
+/tsconfig.app.json           @pakbaz
+/tsconfig.node.json          @pakbaz
+/.gitattributes              @pakbaz
 
 
 # ── Intentionally UNOWNED (the automated lane) ──────────────────────────────

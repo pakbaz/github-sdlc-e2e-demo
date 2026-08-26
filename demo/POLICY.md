@@ -16,13 +16,19 @@ loop, and it is not the urgent one.
 
 | Area | Paths | Risk | Code owner | Lane |
 |---|---|---|---|---|
-| `area/ui` | `src/features/ui/`, `src/styles/` | `low` | — | **auto** |
+| `area/ui` | `src/features/ui/`, `src/styles/`, `src/features/dashboard/`, `public/`, app shell | `low` | — | **auto** |
 | `area/checkout` | `src/features/checkout/` | `low` | — | **auto** |
-| `area/docs` | `demo/`, `docs/`, `README.md` | `low` | — | **auto** |
+| `area/docs` | `demo/`, `docs/`, `README.md`, `tests/` | `low` | — | **auto** |
 | `area/api` | `src/features/api/` | `medium` | `@pakbaz` | **human gate** |
 | `area/auth` | `src/features/auth/` | `high` | `@pakbaz` | **human gate** |
 | `area/infra` | `infra/` | `high` | `@pakbaz` | **human gate** |
-| `area/pipeline` | `.github/` | `high` | `@pakbaz` | **human gate** |
+| `area/pipeline` | `.github/`, `scripts/`, build + dependency config | `high` | `@pakbaz` | **human gate** |
+| *anything else* | unrecognised paths | `medium` | required | **human gate** |
+
+The last row is the important one. The table is a list of paths somebody
+thought about; the catch-all is what happens to the paths nobody has thought
+about yet. It **fails closed**, so adding a new top-level directory cannot
+accidentally open a self-service route to production.
 
 **Why each one:**
 

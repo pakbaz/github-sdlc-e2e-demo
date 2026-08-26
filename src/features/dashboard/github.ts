@@ -115,26 +115,55 @@ async function safe<T>(label: string, work: Promise<T>, errors: string[], fallba
   }
 }
 
+/**
+ * GitHub serves anonymous REST responses with `Cache-Control: max-age=60`, so
+ * a browser will happily replay a minute-old snapshot. During a live demo that
+ * is the difference between the board moving when the audience is watching and
+ * the presenter clicking "Refresh now" to no visible effect.
+ *
+ * A per-load cache-buster costs nothing and makes every refresh truthful.
+ */
+function fresh(url: string, nonce: number): string {
+  return `${url}${url.includes('?') ? '&' : '?'}_=${nonce}`;
+}
+
 /** Fetch everything the dashboard needs in one pass. */
 export async function loadRepoSnapshot(token?: string): Promise<RepoSnapshot> {
   const errors: string[] = [];
   const opts = { token };
+  const nonce = Date.now();
 
   const [issues, pulls, runsResponse, deployments, rateLimit] = await Promise.all([
     safe(
       'issues',
-      getJson<GhIssue[]>(`${apiBase}/issues?state=all&per_page=50&sort=created&direction=desc`, opts),
+      getJson<GhIssue[]>(
+        fresh(`${apiBase}/issues?state=all&per_page=50&sort=created&direction=desc`, nonce),
+        opts,
+      ),
       errors,
       [],
     ),
-    safe('pulls', getJson<GhPull[]>(`${apiBase}/pulls?state=all&per_page=30&sort=created&direction=desc`, opts), errors, []),
+    safe(
+      'pulls',
+      getJson<GhPull[]>(
+        fresh(`${apiBase}/pulls?state=all&per_page=30&sort=created&direction=desc`, nonce),
+        opts,
+      ),
+      errors,
+      [],
+    ),
     safe(
       'runs',
-      getJson<{ workflow_runs: GhRun[] }>(`${apiBase}/actions/runs?per_page=20`, opts),
+      getJson<{ workflow_runs: GhRun[] }>(fresh(`${apiBase}/actions/runs?per_page=20`, nonce), opts),
       errors,
       { workflow_runs: [] },
     ),
-    safe('deployments', getJson<GhDeployment[]>(`${apiBase}/deployments?per_page=5`, opts), errors, []),
+    safe(
+      'deployments',
+      getJson<GhDeployment[]>(fresh(`${apiBase}/deployments?per_page=5`, nonce), opts),
+      errors,
+      [],
+    ),
     readRateLimit(token),
   ]);
 
