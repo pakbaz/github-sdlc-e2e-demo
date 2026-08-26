@@ -10,8 +10,7 @@
  * pull request that only touches this directory needs zero human approvals and
  * can merge and deploy itself.
  *
- * The defect: the cart badge counts distinct lines instead of total units, so a
- * cart holding three of one item shows "1".
+ * The cart badge presents the total number of units across all product lines.
  */
 
 export interface CartLine {
@@ -22,11 +21,10 @@ export interface CartLine {
 /**
  * Number to render inside the cart badge.
  *
- * BUG: returns the number of distinct lines rather than the number of units in
- * the cart. Adding a second copy of the same product does not move the badge.
+ * Quantities are summed so multiple copies of a product each count as an item.
  */
 export function cartBadgeCount(lines: readonly CartLine[]): number {
-  return lines.length;
+  return lines.reduce((count, line) => count + line.quantity, 0);
 }
 
 /**
@@ -41,9 +39,7 @@ export function formatBadge(count: number): string {
 
 /**
  * Accessible label for the cart button.
- *
- * BUG: always says "items", so a single-item cart reads "1 items".
  */
 export function cartAriaLabel(count: number): string {
-  return `Cart, ${count} items`;
+  return `Cart, ${count} ${count === 1 ? 'item' : 'items'}`;
 }
