@@ -79,6 +79,22 @@ else
   done
 fi
 
+# Closing is not enough to clear the board. An issue that actually *shipped* is
+# closed and has a merged pull request, so the dashboard is right to keep
+# showing it in "Deployed" — which means every previous demo's cards pile up in
+# the last column and the next run starts on a board that is already full.
+# Archiving is the explicit signal that a card belongs to a finished run, and
+# the board drops anything carrying it. Applied to closed issues too, so the
+# ones that shipped during the last demo are retired along with the rest.
+archived=0
+for num in $(gh issue list --repo "$REPO" --state all --limit 100 \
+  --label "$DEMO_LABEL" --json number,state --jq '.[] | select(.state == "CLOSED") | .number' || true); do
+  gh issue edit "$num" --repo "$REPO" --add-label "$ARCHIVED_LABEL" >/dev/null 2>&1 \
+    && archived=$((archived + 1)) || true
+done
+[ "$archived" -eq 0 ] && ok "no cards to retire from the board" \
+  || ok "retired $archived card(s) from the pipeline board"
+
 # gh-aw files an issue when an agentic run fails; clear those too so the board
 # is clean for the next run.
 aw=$(gh issue list --repo "$REPO" --state open --limit 100 \

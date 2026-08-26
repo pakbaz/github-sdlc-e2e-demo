@@ -160,6 +160,13 @@ branch, so `make reset` can be aggressive without touching anything else. Source
 files are restored from the `demo-baseline` tag, which brings the planted
 defects back exactly as they were.
 
+Reset also stamps the run's issues with `demo/archived`, and the pipeline board
+hides anything carrying it. Closing an issue is not enough on its own: an issue
+that *shipped* is closed **and** has a merged pull request, which is precisely
+the state the board renders as `Deployed`. Without the archive stamp every past
+demo's successes would stack up in the last column and the next run would open
+on a board that is already full.
+
 Reset also runs from the Actions tab (**Demo · reset**), as does seeding
 (**Demo · seed scenarios**), so the demo can be driven end to end from a phone.
 

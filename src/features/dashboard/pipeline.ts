@@ -136,6 +136,21 @@ function isAbandoned(issue: GhIssue, pull: GhPull | null): boolean {
   return issue.state === 'closed' && !pull?.merged_at;
 }
 
+/**
+ * The card *shipped*: closed, with a merged pull request. `isAbandoned` is
+ * quite correctly false, so it stays in "Deployed" — for ever. Across repeated
+ * demos the last column fills up with every issue that ever succeeded, which
+ * is the opposite of a reset.
+ *
+ * `reset.sh` applies `demo/archived` to the cards of a finished run, and that
+ * is the only signal that distinguishes "shipped a moment ago, show it off"
+ * from "shipped during last week's demo, nobody cares". Closure state cannot
+ * tell those apart, because they are identical.
+ */
+function isArchived(issue: GhIssue): boolean {
+  return hasLabel(issue.labels, 'demo/archived');
+}
+
 export function buildPipeline(
   issues: readonly GhIssue[],
   pulls: readonly GhPull[],
@@ -143,7 +158,7 @@ export function buildPipeline(
 ): PipelineCard[] {
   const live = issues
     .map((issue) => ({ issue, pull: findLinkedPull(issue, pulls) }))
-    .filter(({ issue, pull }) => !isAbandoned(issue, pull));
+    .filter(({ issue, pull }) => !isAbandoned(issue, pull) && !isArchived(issue));
 
   return live.map(({ issue, pull }) => {
     const risk = toRisk(labelValue(issue.labels, 'risk'));

@@ -8,6 +8,9 @@ OWNER="${REPO%%/*}"
 NAME="${REPO#*/}"
 BASELINE_TAG="${DEMO_BASELINE_TAG:-demo-baseline}"
 DEMO_LABEL="demo"
+# Applied by reset.sh to cards from a finished run. The pipeline board hides
+# anything carrying it, so each demo starts on an empty board.
+ARCHIVED_LABEL="demo/archived"
 
 # Everything this demo creates carries the `demo` label, so reset can be
 # aggressive without ever touching real content in the repository.
@@ -68,5 +71,6 @@ route/human-gate|b60205|Blocked at the merge button until a code owner approves.
 agent/triaged|8250df|Triaged by the agentic workflow. Handoff to the coding agent.
 needs-human-review|b60205|A code owner must approve before this can merge.
 demo|586069|Created by the demo. Safe for reset to delete.
+demo/archived|586069|Retired by reset.sh. Hidden from the pipeline board.
 EOF
 }

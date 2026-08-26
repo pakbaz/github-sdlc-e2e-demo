@@ -305,4 +305,31 @@ describe('reset actually clears the board', () => {
     const open = makeIssue({ number: 45, state: 'open' });
     expect(buildPipeline([open], [], new Set())).toHaveLength(1);
   });
+
+  it('drops a shipped card once reset.sh archives it', () => {
+    // The failure this guards: a card that shipped is closed *and* has a merged
+    // pull request, so it legitimately lives in `deployed` for ever. Without
+    // the archive label every past demo's successes stack up in the last
+    // column and the next run opens on a board that is already full.
+    const shipped = makeIssue({
+      number: 46,
+      state: 'closed',
+      labels: [label('demo'), label('demo/archived')],
+    });
+    const pull = makePull({
+      number: 91,
+      title: 'Fixes #46 — correct the cart badge',
+      merged_at: '2026-01-01T00:00:00Z',
+    });
+
+    expect(buildPipeline([shipped], [pull], new Set([pull.head.sha]))).toHaveLength(0);
+  });
+
+  it('archives an open issue too, so a mid-run reset clears the board', () => {
+    // reset.sh closes before it archives, but the two calls are not atomic and
+    // the board polls in between. Hiding on the label alone keeps that window
+    // from flashing a stale card back into `filed`.
+    const open = makeIssue({ number: 47, state: 'open', labels: [label('demo/archived')] });
+    expect(buildPipeline([open], [], new Set())).toHaveLength(0);
+  });
 });
