@@ -30,6 +30,17 @@ safe-outputs:
   submit-pull-request-review:
     allowed-events: [COMMENT, REQUEST_CHANGES]
     max: 1
+    # Post as github-actions[bot], not as whoever owns GH_AW_GITHUB_TOKEN.
+    #
+    # gh-aw resolves tokens `github-token` → `GH_AW_GITHUB_TOKEN` →
+    # `GITHUB_TOKEN`, so without this the review appears under the PAT owner's
+    # name and avatar — a *human's* name, on the review of a change that is
+    # supposed to still be waiting for a human. The footer says "automated",
+    # but the avatar says otherwise, and in a demo the avatar wins.
+    #
+    # Nothing here needs to trigger another workflow, so the default token is
+    # the right one.
+    github-token: ${{ secrets.GITHUB_TOKEN }}
 ---
 
 # Agentic pull request review
