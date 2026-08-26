@@ -150,6 +150,14 @@ echo "$assignable" | grep -qxF "copilot-swe-agent" \
   && ok "copilot-swe-agent is assignable" \
   || bad "copilot-swe-agent is NOT assignable — check the Copilot subscription"
 
+# The agent opens its pull request and *then* dies without this environment,
+# so the failure looks like a broken agent rather than a missing setting.
+if gh api "repos/$REPO/environments/copilot" >/dev/null 2>&1; then
+  ok "'copilot' environment exists"
+else
+  bad "'copilot' environment is missing — the agent will open a PR then fail instantly"
+fi
+
 # ── Pages ────────────────────────────────────────────────────────────────────
 step "GitHub Pages"
 if pages=$(gh api "repos/$REPO/pages" 2>/dev/null); then

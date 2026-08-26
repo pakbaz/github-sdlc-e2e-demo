@@ -79,8 +79,22 @@ happen while you are talking.
 - `gh` ≥ 2.90 and the [`gh-aw`](https://github.com/githubnext/gh-aw) extension
 - Node 22+
 - A Copilot subscription with the coding agent enabled
-- One fine-grained PAT stored as `COPILOT_GITHUB_TOKEN`, `GH_AW_GITHUB_TOKEN`
-  and `DEMO_PAT` — `make setup` prints the exact permissions needed
+- A token stored as `COPILOT_GITHUB_TOKEN`, `GH_AW_GITHUB_TOKEN` and `DEMO_PAT`.
+  The quickest route is the one you are already signed in with:
+
+  ```bash
+  for s in COPILOT_GITHUB_TOKEN GH_AW_GITHUB_TOKEN DEMO_PAT; do
+    gh auth token | gh secret set "$s" --repo OWNER/REPO
+  done
+  ```
+
+  That works because `gh`'s own token already carries `repo` + `workflow`, which
+  is enough to assign the coding agent and to make an auto-merge trigger the
+  deploy. For anything longer-lived than a demo prefer a **fine-grained PAT**
+  scoped to this one repository — the `gh` token is account-wide.
+  `make setup` prints the exact permissions.
+- A repository environment named `copilot`. `make setup` creates it; without it
+  the coding agent opens its pull request and the run dies immediately.
 
 ## What is in here
 

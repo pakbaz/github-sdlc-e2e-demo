@@ -47,6 +47,18 @@ gh api -X PUT "repos/$REPO/actions/permissions/workflow" \
   -F can_approve_pull_request_reviews=true >/dev/null
 ok "Actions granted write permissions and PR-approval capability"
 
+# The Copilot coding agent runs its session in a repository environment named
+# `copilot`. If it does not exist the agent still opens its pull request, then
+# the run dies immediately with "Unable to fetch the information for the
+# environment 'copilot'" — which looks like the agent failing rather than a
+# missing setting. Creating it is idempotent.
+if gh api -X PUT "repos/$REPO/environments/copilot" >/dev/null 2>&1; then
+  ok "'copilot' environment exists (the coding agent needs it)"
+else
+  warn "could not create the 'copilot' environment"
+  info "Settings → Environments → New environment → copilot"
+fi
+
 # ── 3. GitHub Pages ──────────────────────────────────────────────────────────
 step "3. GitHub Pages"
 if gh api "repos/$REPO/pages" >/dev/null 2>&1; then
