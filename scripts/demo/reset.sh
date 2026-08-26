@@ -47,10 +47,16 @@ fi
 
 # ── 2. Close demo pull requests ──────────────────────────────────────────────
 step "2. Pull requests"
+# Only pull requests the demo itself created: an agent branch, or one carrying
+# the demo label. A human's in-progress work in this repository is left alone,
+# which is what makes this script safe to run without reading it first.
 prs=$(gh pr list --repo "$REPO" --state open --limit 100 \
-  --json number,headRefName --jq '.[] | [.number, .headRefName] | @tsv' || true)
+  --json number,headRefName,labels \
+  --jq '.[] | select((.headRefName | test("^(copilot/|agentic-|demo-fix/)"))
+                     or ([.labels[].name] | index("'"$DEMO_LABEL"'")))
+        | [.number, .headRefName] | @tsv' || true)
 if [ -z "$prs" ]; then
-  ok "no open pull requests"
+  ok "no demo pull requests open"
 else
   while IFS=$'\t' read -r num branch; do
     [ -n "$num" ] || continue
@@ -117,10 +123,11 @@ else
     else
       info "restoring $(echo "$changed" | wc -l | tr -d ' ') file(s) to their baseline content"
       tmp=$(mktemp -d)
-      git fetch --quiet origin "refs/tags/$BASELINE_TAG:refs/tags/$BASELINE_TAG" 2>/dev/null || true
 
-      # Build a single commit that reverts just those paths.
-      base_tree=$(gh api "repos/$REPO/git/commits/$base" --jq '.tree.sha')
+      # Start from main's current tree and overwrite only the drifted paths, so
+      # documentation and workflow improvements made since the baseline survive.
+      # This must be a *tree* sha, not a commit sha.
+      head_tree=$(gh api "repos/$REPO/git/commits/$head" --jq '.tree.sha')
       entries=""
       while IFS= read -r f; do
         [ -n "$f" ] || continue
@@ -137,10 +144,10 @@ else
         fi
       done <<< "$changed"
 
-      printf '{"base_tree":"%s","tree":[%s]}' "$head" "${entries%,}" > "$tmp/tree.json"
+      printf '{"base_tree":"%s","tree":[%s]}' "$head_tree" "${entries%,}" > "$tmp/tree.json"
       new_tree=$(gh api -X POST "repos/$REPO/git/trees" --input "$tmp/tree.json" --jq '.sha')
 
-      if [ "$new_tree" = "$(gh api "repos/$REPO/git/commits/$head" --jq '.tree.sha')" ]; then
+      if [ "$new_tree" = "$head_tree" ]; then
         ok "tree already matches the baseline"
       else
         commit=$(gh api -X POST "repos/$REPO/git/commits" \
@@ -151,7 +158,6 @@ else
         info "(uses the repository-admin bypass on the demo-main-gate ruleset)"
       fi
       rm -rf "$tmp"
-      unset base_tree
     fi
   fi
 fi

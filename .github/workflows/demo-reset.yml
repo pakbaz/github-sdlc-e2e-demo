@@ -34,8 +34,13 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Only pull requests the demo created — an agent branch or one
+          # labelled `demo`. Human work in this repository is left alone.
           for n in $(gh pr list --repo "$REPO" --state open --limit 100 \
-                       --json number --jq '.[].number'); do
+                       --json number,headRefName,labels \
+                       --jq '.[] | select((.headRefName | test("^(copilot/|agentic-|demo-fix/)"))
+                                          or ([.labels[].name] | index("demo")))
+                             | .number'); do
             gh pr close "$n" --repo "$REPO" --delete-branch \
               && echo "closed #$n" || echo "::warning::could not close #$n"
           done

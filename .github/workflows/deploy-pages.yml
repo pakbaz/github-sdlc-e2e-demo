@@ -44,9 +44,35 @@ jobs:
         run: npm run build
 
       - name: Add SPA fallback
-        # The dashboard uses hash routing, but a 404.html means a stale deep
-        # link never shows GitHub's default error page mid-demo.
-        run: cp dist/index.html dist/404.html
+        # The app uses hash routing, so a path-style deep link such as
+        # /pipeline is a 404 on Pages. Copying index.html here would render
+        # the *store* instead — quietly showing the wrong page to anyone the
+        # presenter sent a link to. Translate the path into the hash route
+        # and redirect, so /pipeline lands on /#/pipeline.
+        env:
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+        run: |
+          cat > dist/404.html <<'HTML'          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <title>Redirecting…</title>
+              <script>
+                (function () {
+                  var base = '__BASE__';
+                  var path = location.pathname.indexOf(base) === 0
+                    ? location.pathname.slice(base.length)
+                    : location.pathname.replace(/^\//, '');
+                  location.replace(base + '#/' + path.replace(/^\/+/, '') + location.search);
+                })();
+              </script>
+            </head>
+            <body>
+              <p>Redirecting to <a id="home" href="__BASE__">the demo</a>…</p>
+            </body>
+          </html>
+          HTML
+          sed -i "s|__BASE__|${VITE_BASE_PATH}|g" dist/404.html
 
       - uses: actions/configure-pages@v5
 
