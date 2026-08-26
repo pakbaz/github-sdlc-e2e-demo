@@ -87,11 +87,25 @@ fi
 # the board drops anything carrying it. Applied to closed issues too, so the
 # ones that shipped during the last demo are retired along with the rest.
 archived=0
+failed=0
+# The label has to exist before it can be applied, and a repository set up
+# before this step existed will not have it. `gh issue edit --add-label` fails
+# quietly on an unknown label, which would leave reset reporting success while
+# the board stayed full — the exact failure this whole change is about.
+gh label create "$ARCHIVED_LABEL" --repo "$REPO" --color 586069 \
+  --description "Retired by reset.sh. Hidden from the pipeline board." >/dev/null 2>&1 || true
+
 for num in $(gh issue list --repo "$REPO" --state all --limit 100 \
   --label "$DEMO_LABEL" --json number,state --jq '.[] | select(.state == "CLOSED") | .number' || true); do
-  gh issue edit "$num" --repo "$REPO" --add-label "$ARCHIVED_LABEL" >/dev/null 2>&1 \
-    && archived=$((archived + 1)) || true
+  if gh issue edit "$num" --repo "$REPO" --add-label "$ARCHIVED_LABEL" >/dev/null 2>&1; then
+    archived=$((archived + 1))
+  else
+    failed=$((failed + 1))
+  fi
 done
+if [ "$failed" -gt 0 ]; then
+  warn "could not retire $failed card(s) — they will still show on the board"
+fi
 [ "$archived" -eq 0 ] && ok "no cards to retire from the board" \
   || ok "retired $archived card(s) from the pipeline board"
 

@@ -58,6 +58,18 @@ jobs:
           echo "Labels on #$NUMBER:"
           echo "$labels" | sed 's/^/  - /'
 
+          # A closed issue is finished business. `reset.sh` labels the previous
+          # run's issues to retire them from the board, and every one of those
+          # label events lands here — so without this guard a reset replays the
+          # handoff for every issue the demo has ever run, and the coding agent
+          # can be pointed at work that already shipped.
+          state=$(gh issue view "$NUMBER" --repo "$REPO" --json state --jq '.state')
+          if [ "$state" != "OPEN" ]; then
+            echo "#$NUMBER is $state — nothing to dispatch."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # The triage agent applies `agent/triaged` as its last act. Until it
           # is there, triage has not finished and there is nothing to hand off.
           if ! echo "$labels" | grep -qx 'agent/triaged'; then
