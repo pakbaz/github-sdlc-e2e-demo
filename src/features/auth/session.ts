@@ -14,8 +14,8 @@
  * pull request touching this directory REQUIRES code-owner approval before it
  * can merge. That gate is enforced by the repository ruleset, not by a script.
  *
- * The defect: `isSessionValid` never checks `expiresAt`, so an expired session
- * token is accepted indefinitely. `parseSession` also trusts unvalidated input.
+ * The seeded defect covered expiry enforcement and validation of persisted
+ * session state. The regression tests exercise both security boundaries.
  */
 
 export interface Session {
@@ -42,25 +42,22 @@ export function createSession(userId: string, now: number = Date.now()): Session
 /**
  * Decide whether a session may be used to authorise a request.
  *
- * BUG: expiry is never evaluated. Any session object that merely *has* a token
- * is treated as valid forever, so revoked or long-expired sessions keep
- * working. The `expiresAt` field is read nowhere in this function.
+ * A session stops being valid at its expiry time.
  */
-export function isSessionValid(session: Session | null, _now: number = Date.now()): boolean {
+export function isSessionValid(session: Session | null, now: number = Date.now()): boolean {
   if (!session) {
     return false;
   }
   if (!session.token || session.token.length === 0) {
     return false;
   }
-  return true;
+  return now < session.expiresAt;
 }
 
 /**
  * Whether a session grants a scope.
  *
- * BUG: a session that has expired can still pass this check because it defers
- * entirely to the broken `isSessionValid` above.
+ * Expired sessions never grant scopes.
  */
 export function hasScope(session: Session | null, scope: string, now: number = Date.now()): boolean {
   if (!isSessionValid(session, now)) {
@@ -77,17 +74,34 @@ export function millisUntilExpiry(session: Session, now: number = Date.now()): n
 /**
  * Rehydrate a session from persisted JSON.
  *
- * BUG: the parsed value is cast straight to `Session` with no shape validation,
- * so malformed or attacker-controlled storage produces an object that later
- * code trusts.
+ * Malformed persisted state is rejected.
  */
 export function parseSession(raw: string | null): Session | null {
   if (!raw) {
     return null;
   }
   try {
-    return JSON.parse(raw) as Session;
+    const value: unknown = JSON.parse(raw);
+    return isSession(value) ? value : null;
   } catch {
     return null;
   }
+}
+
+function isSession(value: unknown): value is Session {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const session = value as Record<string, unknown>;
+  return (
+    typeof session.userId === 'string' &&
+    typeof session.token === 'string' &&
+    typeof session.expiresAt === 'number' &&
+    Number.isFinite(session.expiresAt) &&
+    typeof session.issuedAt === 'number' &&
+    Number.isFinite(session.issuedAt) &&
+    Array.isArray(session.scopes) &&
+    session.scopes.every((scope) => typeof scope === 'string')
+  );
 }

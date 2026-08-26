@@ -34,6 +34,12 @@ describe('isSessionValid', () => {
   it('accepts a freshly issued session', () => {
     expect(isSessionValid(createSession('user-1', NOW), NOW)).toBe(true);
   });
+
+  it('rejects a session at or after its expiry time', () => {
+    const session = createSession('user-1', NOW);
+    expect(isSessionValid(session, session.expiresAt)).toBe(false);
+    expect(isSessionValid(session, session.expiresAt + 1)).toBe(false);
+  });
 });
 
 describe('millisUntilExpiry', () => {
@@ -74,14 +80,22 @@ describe('parseSession', () => {
     const session = createSession('user-1', NOW);
     expect(parseSession(JSON.stringify(session))).toEqual(session);
   });
+
+  it.each([
+    null,
+    { userId: 123 },
+    { ...createSession('user-1', NOW), expiresAt: 'tomorrow' },
+    { ...createSession('user-1', NOW), scopes: ['store:read', 42] },
+  ])('returns null for invalid session state %#', (value) => {
+    expect(parseSession(JSON.stringify(value))).toBeNull();
+  });
 });
 
 /**
  * DEMO NOTE — the "auth" scenario (P0 / risk HIGH).
  *
- * `isSessionValid` currently ignores `expiresAt` entirely, so an expired
- * session is still accepted. The tests above deliberately do not assert the
- * expiry behaviour, which keeps `main` green while the defect is planted.
+ * The seeded defect ignored `expiresAt` and trusted parsed storage. The
+ * regression tests above exercise both security boundaries directly.
  *
  * The seeded issue asks the coding agent to enforce expiry and add regression
  * tests here. Because `src/features/auth/**` has a CODEOWNER, the resulting
