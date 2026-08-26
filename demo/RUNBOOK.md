@@ -73,6 +73,7 @@ while you talk. This is the single highest-value thing on this checklist.
 | Nothing dispatches at all — no runs, no checks | Check [githubstatus.com](https://www.githubstatus.com). During an Actions incident every lane stalls; the board and the store stay up because they read the REST API directly. |
 | An issue is fully labelled but nothing picks it up | A `labeled` webhook was dropped. `gh workflow run "Dispatch to Copilot" -f issue=NN` re-runs the handoff; it is idempotent. |
 | The agent's PR sits in draft after it finishes | `agent-pr-ready.yml` promotes it within 5 minutes. To skip the wait: `gh workflow run "Agent PR ready" -f pr=NN`, or just `gh pr ready NN`. |
+| You fixed a workflow on `main` but the open agent PR still misbehaves | `pull_request` runs execute the workflow file **from the pull request's head branch**, not from `main`. A branch the agent cut before your fix keeps running the old version until it is rebased. `workflow_dispatch` and `schedule` always run from `main` — that is exactly what the 5-minute sweep is for. |
 | A run on a `copilot/*` branch says *action_required* | "Require approval for workflow runs" is still on — see the once-per-account list above. Unblock this run by approving it in the Actions tab, then fix the setting before the next one. |
 | Everything breaks | `make status` in the terminal shows the same state. |
 
