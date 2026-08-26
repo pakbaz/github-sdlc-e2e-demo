@@ -135,16 +135,17 @@ jobs:
                 }' \
               -f id="$pr_id" >/dev/null
 
-            gh pr comment "$number" --repo "$REPO" --body "$(cat <<'EOF'
-🤖 The coding agent finished writing this change, so I marked it **ready for
-review** automatically.
+            cat > /tmp/ready.md <<'EOF'
+          🤖 The coding agent finished writing this change, so I marked it
+          **ready for review** automatically.
 
-Nothing was waived by doing this. Marking a pull request ready is what makes
-it *eligible* for review — the `main` ruleset, `.github/CODEOWNERS` and the
-required `ci` check all still apply. If this change touches an owned path, it
-now blocks on its code owner.
-EOF
-)"
+          Nothing was waived by doing this. Marking a pull request ready is what
+          makes it *eligible* for review — the `main` ruleset,
+          `.github/CODEOWNERS` and the required `ci` check all still apply. If
+          this change touches an owned path, it now blocks on its code owner.
+          EOF
+
+            gh pr comment "$number" --repo "$REPO" --body-file /tmp/ready.md
 
             promoted=$((promoted + 1))
             echo "ready=$number" >> "$GITHUB_STEP_SUMMARY"
