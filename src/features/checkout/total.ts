@@ -4,18 +4,18 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * DEMO SCENARIO: "checkout" — Priority P0 / Risk LOW  →  AUTOMATED LANE
  * ─────────────────────────────────────────────────────────────────────────────
- * This module contained an intentional, realistic defect used by the Agentic
- * SDLC demo. It was *critical* (customers were charged the wrong amount) but
- * the blast radius was tiny: one pure function, fully covered by unit tests,
- * no security or infrastructure surface. That combination — high priority,
- * low risk — is exactly what should be allowed to ship without a human gate.
+ * This module contains an intentional, realistic defect used by the Agentic
+ * SDLC demo. It is *critical* (customers are charged the wrong amount) but the
+ * blast radius is tiny: one pure function, fully covered by unit tests, no
+ * security or infrastructure surface. That combination — high priority, low
+ * risk — is exactly what should be allowed to ship without a human gate.
  *
- * The defect: money was accumulated in floating point and only rounded at the
- * very end, so representation error leaked into the total. Discounts and tax
- * compounded the error.
+ * The defect: money is accumulated in floating point and only rounded at the
+ * very end, so representation error leaks into the total. Discounts and tax
+ * compound the error.
  *
- * The fix: all arithmetic is now done in integer minor units (cents), rounded
- * once at each monetary boundary (see `toCents` / `fromCents` below).
+ * The fix a coding agent should make: do all arithmetic in integer minor units
+ * (cents) and round once, at each monetary boundary.
  */
 
 export interface LineItem {
@@ -50,25 +50,13 @@ export function roundCurrency(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-/** Convert a whole-currency amount to integer minor units (cents). */
-function toCents(value: number): number {
-  return Math.round(value * 100);
-}
-
-/** Convert integer minor units (cents) back to a whole-currency amount. */
-function fromCents(cents: number): number {
-  return cents / 100;
-}
-
 /**
  * Compute the totals for an order.
  *
- * Every monetary boundary (line total, discount, tax, shipping) is rounded to
- * the nearest cent as integer minor units, and the grand total is derived by
- * summing those already-rounded cents. This guarantees
- * `total === subtotal - discount + tax + shipping` on the printed receipt,
- * instead of letting floating-point representation error leak in from
- * accumulating unrounded intermediate values.
+ * BUG: every intermediate value stays in floating point and is only rounded on
+ * the way out, so `0.1 + 0.2`-class errors accumulate across lines, discount
+ * and tax. On realistic carts this produces totals that are off by a cent or
+ * more — which is a genuine P0 for a storefront.
  */
 export function calculateOrderTotals(
   items: readonly LineItem[],
@@ -81,24 +69,23 @@ export function calculateOrderTotals(
     freeShippingThreshold = Number.POSITIVE_INFINITY,
   } = options;
 
-  let subtotalCents = 0;
+  let subtotal = 0;
   for (const item of items) {
-    subtotalCents += toCents(item.unitPrice) * item.quantity;
+    subtotal += item.unitPrice * item.quantity;
   }
 
-  const discountCents = Math.round(subtotalCents * discountRate);
-  const taxableCents = subtotalCents - discountCents;
-  const taxCents = Math.round(taxableCents * taxRate);
-  const subtotal = fromCents(subtotalCents);
-  const shippingCents = subtotal >= freeShippingThreshold ? 0 : toCents(shipping);
-  const totalCents = taxableCents + taxCents + shippingCents;
+  const discount = subtotal * discountRate;
+  const taxable = subtotal - discount;
+  const tax = taxable * taxRate;
+  const shippingCost = subtotal >= freeShippingThreshold ? 0 : shipping;
+  const total = taxable + tax + shippingCost;
 
   return {
-    subtotal,
-    discount: fromCents(discountCents),
-    tax: fromCents(taxCents),
-    shipping: fromCents(shippingCents),
-    total: fromCents(totalCents),
+    subtotal: roundCurrency(subtotal),
+    discount: roundCurrency(discount),
+    tax: roundCurrency(tax),
+    shipping: roundCurrency(shippingCost),
+    total: roundCurrency(total),
   };
 }
 
