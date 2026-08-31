@@ -18,7 +18,9 @@ network: defaults
 
 timeout-minutes: 15
 
-engine: copilot
+engine:
+  id: copilot
+  model: auto
 
 tools:
   bash: ["cat", "ls", "find", "grep", "head", "tail", "wc", "sed", "git", "diff"]
