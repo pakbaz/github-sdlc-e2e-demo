@@ -27,8 +27,10 @@ describe('the assets bucket is not public', () => {
     }
   });
 
-  it('does not grant s3:GetObject to everyone', () => {
-    expect(tf).not.toMatch(/Effect\s*=\s*"Allow"[\s\S]{0,200}Principal\s*=\s*"\*"/);
+  it('does not grant anything to everyone', () => {
+    // Either key order — policy documents are written both ways.
+    expect(tf).not.toMatch(/Effect\s*=\s*"Allow"[\s\S]{0,400}?Principal\s*=\s*"\*"/);
+    expect(tf).not.toMatch(/Principal\s*=\s*"\*"[\s\S]{0,400}?Effect\s*=\s*"Allow"/);
   });
 });
 
