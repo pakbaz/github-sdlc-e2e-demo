@@ -25,11 +25,12 @@ The distinction matters on stage. The two `.md` workflows are the ones where
 "the AI decided"; the `.yml` ones are deterministic and you can read them out
 loud line by line without hedging.
 
-Both agentic workflows set `engine.model: auto`. Copilot can route
-straightforward classification work to a faster model and reserve stronger
-reasoning for an ambiguous issue or a complex pull request. Auto follows the
-models available under the repository's Copilot plan and administrator
-policies instead of pinning this demo to a model name that will age.
+Both agentic workflows deliberately omit a model and inherit the tested
+Copilot engine default. The Copilot runtime bundled with `gh-aw` v0.81.6
+rejects both `model: auto` and `model: agent` at execution time even though
+both forms compile successfully. Copilot cloud agent is a separate runtime:
+the issue assignment leaves its model on Auto, so implementation tasks still
+receive complexity-aware model selection.
 
 ---
 
@@ -132,9 +133,7 @@ on:
 permissions: read-all             # the agent job. It cannot write. At all.
 network: defaults                 # egress allow-list
 timeout-minutes: 10
-engine:
-  id: copilot
-  model: auto                     # adaptive routing by task complexity
+engine: copilot                   # tested gh-aw default; see model note below
 
 tools:
   bash: ["cat", "ls", "find", "grep", "head", "tail", "wc", "sed"]
@@ -167,6 +166,26 @@ Three things to point at:
    cannot apply six labels.
 3. **`add-comment: max: 1`.** It gets one comment. It cannot spam the thread, and
    it cannot hold a conversation with itself.
+
+### Model-selection compatibility
+
+Do not infer runtime support from a successful compile. With the version pinned
+in this repository, both of these compile:
+
+```yaml
+model: auto
+```
+
+```yaml
+engine:
+  id: copilot
+  model: agent
+```
+
+Both then fail in `Execute GitHub Copilot CLI` with *\"model is retired or
+unsupported\"*. Keep `engine: copilot` until a `gh-aw` upgrade has been tested
+through a real run. The coding agent is different: its assignment API does not
+force a model, so Copilot cloud agent retains Auto model selection.
 
 ### The prompt, and why it is shaped that way
 

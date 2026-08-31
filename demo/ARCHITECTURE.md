@@ -62,25 +62,19 @@ flowchart TD
 
 ## How models are selected
 
-The two `gh-aw` workflows declare:
+There are two different model-selection planes in this pipeline:
 
-```yaml
-engine:
-  id: copilot
-  model: auto
-```
+| Agent | Selection |
+|---|---|
+| Copilot coding agent | **Auto** — `dispatch-to-copilot.yml` assigns the agent without forcing a model, so Copilot can match the model to implementation complexity and availability |
+| `gh-aw` triage and review | **Engine default** — both declare `engine: copilot` and inherit the tested model configured by `gh-aw` |
 
-`auto` delegates model selection to Copilot rather than pinning a model ID.
-Copilot selects from the models permitted by the repository's plan and
-administrator policies, considering task complexity and current availability.
-A straightforward issue classification can use a faster model; an ambiguous
-issue or complex pull-request review can receive stronger reasoning without
-changing this repository.
-
-`dispatch-to-copilot.yml` does not force a model when assigning the coding
-agent. Copilot cloud agent therefore retains its Auto model selection. The
-model used is visible in the agent response and workflow run, so the choice is
-auditable even though it is not hard-coded.
+Do not add `model: auto` or `model: agent` to the two `gh-aw` workflows while
+this repository is on `gh-aw` v0.81.6. Both forms pass compilation, but the
+bundled Copilot runtime rejects them at execution time as retired or
+unsupported. This was verified with a real pull-request review and a five-issue
+triage run. Re-test the runtime, not just `gh aw compile`, before revisiting it
+after an upgrade.
 
 ## Why agentic workflows are read-only
 
