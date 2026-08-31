@@ -26,7 +26,7 @@ export interface CartLine {
  * the cart. Adding a second copy of the same product does not move the badge.
  */
 export function cartBadgeCount(lines: readonly CartLine[]): number {
-  return lines.length;
+  return lines.reduce((total, line) => total + line.quantity, 0);
 }
 
 /**
@@ -45,5 +45,5 @@ export function formatBadge(count: number): string {
  * BUG: always says "items", so a single-item cart reads "1 items".
  */
 export function cartAriaLabel(count: number): string {
-  return `Cart, ${count} items`;
+  return `Cart, ${count} ${count === 1 ? 'item' : 'items'}`;
 }
