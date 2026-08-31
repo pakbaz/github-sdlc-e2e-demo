@@ -67,7 +67,7 @@ describe('calculateOrderTotals', () => {
   });
 
   /**
-   * Regression test for #44: 3 mugs at $29.99 and 2 pairs of socks at $14.44
+   * Regression test for #44: 3 mugs at $19.99 and 2 pairs of socks at $14.35
    * summed to a subtotal of $88.67, but the printed receipt lines
    * (88.67 - 8.87 + 6.58 + 7.95 = 94.33) didn't match the displayed total of
    * $94.34 because floating-point error leaked in before the final rounding.
