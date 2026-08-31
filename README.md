@@ -55,6 +55,11 @@ The agentic reviewer is declared with
 `allowed-events: [COMMENT, REQUEST_CHANGES]`, so it is structurally incapable
 of approving — two agents can never approve each other into production.
 
+Both agentic workflows use the adaptive `agent` model alias. Copilot chooses an
+appropriate model for each run based on task complexity, availability and the
+repository's model policies instead of pinning the demo to one model forever.
+The coding agent assignment likewise leaves model selection on Auto.
+
 ## Run it
 
 ```bash

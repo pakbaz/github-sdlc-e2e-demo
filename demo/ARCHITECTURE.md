@@ -60,6 +60,28 @@ flowchart TD
 | `demo-seed.yml` | Actions | manual | Files scenario issues from the Actions tab |
 | `demo-reset.yml` | Actions | manual | Returns the repository to `demo-baseline` |
 
+## How models are selected
+
+The two `gh-aw` workflows declare:
+
+```yaml
+engine:
+  id: copilot
+  model: agent
+```
+
+`agent` is an adaptive alias rather than a pinned model ID. AWF token steering
+and Copilot select from the models permitted by the repository's plan and
+administrator policies, considering task complexity and current model
+availability. A straightforward issue classification can use a faster model;
+an ambiguous issue or complex pull-request review can receive stronger
+reasoning without changing this repository.
+
+`dispatch-to-copilot.yml` does not force a model when assigning the coding
+agent. Copilot cloud agent therefore retains its Auto model selection. The
+model used is visible in the agent response and workflow run, so the choice is
+auditable even though it is not hard-coded.
+
 ## Why agentic workflows are read-only
 
 `gh-aw` compiles each `.md` into a `.lock.yml` with a specific shape:
