@@ -324,11 +324,12 @@ line-by-line detail is in `demo/AGENTIC-WORKFLOWS.md` if the room pushes):
   declared allow-list.
 - **`add-labels` has an allow-list.** A prompt-injected agent cannot invent a
   label, let alone push code.
-- **The model matches the work.** Show `engine.model: auto` in `triage.md` and
-  `pr-review.md`. Copilot may use a faster model for a
-  straightforward classification and stronger reasoning for an ambiguous
-  review, while respecting the models the administrator permits. The model
-  actually used remains visible in the run.
+- **The coding model matches the work.** `dispatch-to-copilot.yml` assigns the
+  coding agent without forcing a model, so Copilot cloud agent retains Auto
+  selection and can match the model to implementation complexity. Do not
+  confuse that with the two `gh-aw` workflows: on the current `gh-aw` v0.81.6,
+  adding `model: auto` or `model: agent` compiles but fails at runtime. They
+  deliberately inherit their tested engine default.
 - **The reviewer cannot approve.** Show the frontmatter:
   `allowed-events: [COMMENT, REQUEST_CHANGES]`. Two agents cannot approve each
   other into production.
