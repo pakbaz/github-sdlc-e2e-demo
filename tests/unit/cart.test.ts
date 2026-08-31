@@ -12,10 +12,6 @@ describe('cartBadgeCount', () => {
   it('is one for a single unit of a single product', () => {
     expect(cartBadgeCount(lines(1))).toBe(1);
   });
-
-  it('sums quantities across all lines', () => {
-    expect(cartBadgeCount(lines(3, 2))).toBe(5);
-  });
 });
 
 describe('formatBadge', () => {
@@ -39,10 +35,6 @@ describe('cartAriaLabel', () => {
   it('describes the cart contents', () => {
     expect(cartAriaLabel(3)).toContain('3');
     expect(cartAriaLabel(3)).toContain('Cart');
-  });
-
-  it('uses singular grammar for a single item', () => {
-    expect(cartAriaLabel(1)).toBe('Cart, 1 item');
   });
 });
 

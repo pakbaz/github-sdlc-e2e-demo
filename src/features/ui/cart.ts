@@ -22,10 +22,11 @@ export interface CartLine {
 /**
  * Number to render inside the cart badge.
  *
- * Counts total units across all cart lines.
+ * BUG: returns the number of distinct lines rather than the number of units in
+ * the cart. Adding a second copy of the same product does not move the badge.
  */
 export function cartBadgeCount(lines: readonly CartLine[]): number {
-  return lines.reduce((total, line) => total + line.quantity, 0);
+  return lines.length;
 }
 
 /**
@@ -40,7 +41,9 @@ export function formatBadge(count: number): string {
 
 /**
  * Accessible label for the cart button.
+ *
+ * BUG: always says "items", so a single-item cart reads "1 items".
  */
 export function cartAriaLabel(count: number): string {
-  return `Cart, ${count} ${count === 1 ? 'item' : 'items'}`;
+  return `Cart, ${count} items`;
 }

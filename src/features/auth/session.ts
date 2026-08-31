@@ -14,9 +14,8 @@
  * pull request touching this directory REQUIRES code-owner approval before it
  * can merge. That gate is enforced by the repository ruleset, not by a script.
  *
- * The defect (now fixed): `isSessionValid` never checked `expiresAt`, so an
- * expired session token was accepted indefinitely, and `parseSession` trusted
- * unvalidated input.
+ * The defect: `isSessionValid` never checks `expiresAt`, so an expired session
+ * token is accepted indefinitely. `parseSession` also trusts unvalidated input.
  */
 
 export interface Session {
@@ -43,20 +42,26 @@ export function createSession(userId: string, now: number = Date.now()): Session
 /**
  * Decide whether a session may be used to authorise a request.
  *
- * Expiry is evaluated against the injected clock, so the behaviour is testable
- * without moving the system time. A session is invalid from `expiresAt` on.
+ * BUG: expiry is never evaluated. Any session object that merely *has* a token
+ * is treated as valid forever, so revoked or long-expired sessions keep
+ * working. The `expiresAt` field is read nowhere in this function.
  */
-export function isSessionValid(session: Session | null, now: number = Date.now()): boolean {
+export function isSessionValid(session: Session | null, _now: number = Date.now()): boolean {
   if (!session) {
     return false;
   }
   if (!session.token || session.token.length === 0) {
     return false;
   }
-  return millisUntilExpiry(session, now) > 0;
+  return true;
 }
 
-/** Whether a session grants a scope. Expired sessions grant nothing. */
+/**
+ * Whether a session grants a scope.
+ *
+ * BUG: a session that has expired can still pass this check because it defers
+ * entirely to the broken `isSessionValid` above.
+ */
 export function hasScope(session: Session | null, scope: string, now: number = Date.now()): boolean {
   if (!isSessionValid(session, now)) {
     return false;
@@ -69,38 +74,20 @@ export function millisUntilExpiry(session: Session, now: number = Date.now()): n
   return session.expiresAt - now;
 }
 
-function isSessionShape(value: unknown): value is Session {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.userId === 'string' &&
-    typeof candidate.token === 'string' &&
-    typeof candidate.expiresAt === 'number' &&
-    Number.isFinite(candidate.expiresAt) &&
-    typeof candidate.issuedAt === 'number' &&
-    Number.isFinite(candidate.issuedAt) &&
-    Array.isArray(candidate.scopes) &&
-    candidate.scopes.every((scope) => typeof scope === 'string')
-  );
-}
-
 /**
  * Rehydrate a session from persisted JSON.
  *
- * The parsed value is shape-checked before it is trusted, so hand-edited or
- * corrupted storage is rejected rather than treated as a session.
+ * BUG: the parsed value is cast straight to `Session` with no shape validation,
+ * so malformed or attacker-controlled storage produces an object that later
+ * code trusts.
  */
 export function parseSession(raw: string | null): Session | null {
   if (!raw) {
     return null;
   }
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    return JSON.parse(raw) as Session;
   } catch {
     return null;
   }
-  return isSessionShape(parsed) ? parsed : null;
 }

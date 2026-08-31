@@ -4,12 +4,16 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * DEMO SCENARIO: "api" — Priority P1 / Risk MEDIUM  →  HUMAN-GATE LANE
  * ─────────────────────────────────────────────────────────────────────────────
- * This module is shared by every feature, so a careless change here degrades
- * the whole product — medium risk, and owned in `.github/CODEOWNERS`.
+ * This module contains intentional, realistic reliability defects used by the
+ * Agentic SDLC demo. It is shared by every feature, so a careless change here
+ * degrades the whole product — medium risk, and owned in `.github/CODEOWNERS`.
  *
- * Requests time out for real, transient failures (429 / 502 / 503 / 504) are
- * retried with exponential backoff, and `fetchAllPages` follows RFC 5988
- * `Link: rel="next"` up to `MAX_PAGES`.
+ * The defects:
+ *   1. No timeout, so a hanging server hangs the UI forever.
+ *   2. No retry or backoff on transient 5xx / 429 responses.
+ *   3. `fetchAllPages` only ever returns the first page, silently truncating
+ *      results.
+ *   4. Rate-limit responses are not distinguished from other failures.
  */
 
 export interface RequestOptions {
@@ -18,19 +22,7 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Milliseconds before the request should be abandoned. */
   timeoutMs?: number;
-  /** Extra attempts after the first one, for retryable statuses only. */
-  retries?: number;
-  /** Base backoff between attempts; doubles on every retry. */
-  retryDelayMs?: number;
 }
-
-/** Defaults chosen so a single blip never surfaces in the UI. */
-export const DEFAULT_TIMEOUT_MS = 10_000;
-export const DEFAULT_RETRIES = 2;
-export const DEFAULT_RETRY_DELAY_MS = 300;
-
-/** Upper bound on pages followed, so a pathological server cannot loop forever. */
-export const MAX_PAGES = 10;
 
 export class ApiError extends Error {
   constructor(
@@ -54,99 +46,38 @@ function buildHeaders(token?: string): HeadersInit {
   return headers;
 }
 
-/** Wait, but stop waiting as soon as the caller cancels. */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const done = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', done);
-      resolve();
-    };
-    const timer = setTimeout(done, ms);
-    signal?.addEventListener('abort', done);
-  });
-}
-
 /**
- * Perform one GET, aborting it for real once `timeoutMs` has elapsed.
+ * Perform a JSON GET.
  *
- * The caller's own `signal` is honoured too: whichever fires first wins.
+ * BUG: `timeoutMs` is accepted but never applied, and there is no retry or
+ * backoff for transient failures (429 / 502 / 503 / 504). A single blip
+ * surfaces as a hard error in the UI.
  */
-async function requestOnce(url: string, options: RequestOptions): Promise<Response> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const controller = new AbortController();
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-  const external = options.signal;
-  const forward = () => controller.abort();
-  if (external) {
-    if (external.aborted) {
-      forward();
-    } else {
-      external.addEventListener('abort', forward);
-    }
-  }
+export async function getJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
+  const response = await fetch(url, {
+    headers: buildHeaders(options.token),
+    signal: options.signal,
+  });
 
-  try {
-    return await fetch(url, { headers: buildHeaders(options.token), signal: controller.signal });
-  } catch (error) {
-    if (timedOut) {
-      throw new ApiError(`Request timed out after ${timeoutMs}ms`, 408, url);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-    external?.removeEventListener('abort', forward);
-  }
-}
-
-/** Perform a JSON GET, retrying transient failures with exponential backoff. */
-async function getResponse(url: string, options: RequestOptions): Promise<Response> {
-  const retries = options.retries ?? DEFAULT_RETRIES;
-  const baseDelay = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
-
-  for (let attempt = 0; ; attempt += 1) {
-    const response = await requestOnce(url, options);
-    if (response.ok) {
-      return response;
-    }
-    if (attempt < retries && isRetryableStatus(response.status) && !options.signal?.aborted) {
-      await sleep(baseDelay * 2 ** attempt, options.signal);
-      continue;
-    }
+  if (!response.ok) {
     throw new ApiError(`Request failed with status ${response.status}`, response.status, url);
   }
-}
 
-/** Perform a JSON GET. */
-export async function getJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
-  const response = await getResponse(url, options);
   return (await response.json()) as T;
 }
 
 /**
  * Follow RFC 5988 `Link: rel="next"` pagination and return every result.
  *
- * Stops at `MAX_PAGES` so a server that always advertises a next page cannot
- * spin forever.
+ * BUG: pagination is never followed. Only the first page is returned, so any
+ * caller with more than `per_page` results silently loses data.
  */
 export async function fetchAllPages<T>(
   url: string,
   options: RequestOptions = {},
 ): Promise<T[]> {
-  const items: T[] = [];
-  let next: string | null = url;
-
-  for (let page = 0; next && page < MAX_PAGES; page += 1) {
-    const response: Response = await getResponse(next, options);
-    items.push(...((await response.json()) as T[]));
-    next = parseNextLink(response.headers.get('Link'));
-  }
-
-  return items;
+  const firstPage = await getJson<T[]>(url, options);
+  return firstPage;
 }
 
 /** Extract the URL marked `rel="next"` from a Link header, if present. */

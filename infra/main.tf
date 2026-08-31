@@ -4,8 +4,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # DEMO SCENARIO: "infra" — Priority P1 / Risk HIGH  →  HUMAN-GATE LANE
 # ─────────────────────────────────────────────────────────────────────────────
-# This file is never applied anywhere — it exists so the demo has a credible
-# high-risk change surface.
+# This file contains intentional, realistic infrastructure-as-code defects used
+# by the Agentic SDLC demo. It is never applied anywhere — it exists so the demo
+# has a credible high-risk change surface.
 #
 # `.github/CODEOWNERS` maps `infra/**` to a human owner, so any pull request
 # touching this directory REQUIRES code-owner approval before it can merge, no
@@ -13,10 +14,12 @@
 # and shipping it to production unreviewed is precisely the outcome this demo
 # is designed to prevent.
 #
-# The assets bucket is now private: public access is blocked, the policy denies
-# plaintext HTTP, objects are encrypted at rest, versioning is on, and reads are
-# logged. Anything that has to be public is served through a CDN origin access
-# identity, not by opening the bucket. `tests/unit/infra.test.ts` pins all six.
+# The defects:
+#   1. The assets bucket is world-readable (`acl = "public-read"`).
+#   2. There is no bucket public-access block.
+#   3. Server-side encryption is not configured.
+#   4. Plaintext HTTP is allowed — no TLS-only bucket policy.
+#   5. Access logging and versioning are both disabled.
 ###############################################################################
 
 terraform {
@@ -46,10 +49,11 @@ variable "environment" {
   default     = "production"
 }
 
-# Private by default. Ownership is enforced so ACLs cannot grant access, and a
-# public access block covers every axis AWS offers.
+# BUG: the bucket is public-read and has no public access block, so every
+# object placed in it is readable by anyone on the internet.
 resource "aws_s3_bucket" "assets" {
   bucket = "nimbus-store-assets-${var.environment}"
+  acl    = "public-read"
 
   tags = {
     Application = "nimbus-store"
@@ -58,119 +62,40 @@ resource "aws_s3_bucket" "assets" {
   }
 }
 
-resource "aws_s3_bucket_ownership_controls" "assets" {
-  bucket = aws_s3_bucket.assets.id
-
-  rule {
-    object_ownership = "BucketOwnerEnforced"
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "assets" {
-  bucket = aws_s3_bucket.assets.id
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-# Versioning on, so an accidental or malicious overwrite is recoverable.
+# BUG: versioning disabled — an accidental or malicious overwrite is
+# unrecoverable.
 resource "aws_s3_bucket_versioning" "assets" {
   bucket = aws_s3_bucket.assets.id
 
   versioning_configuration {
-    status = "Enabled"
+    status = "Disabled"
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
-  bucket = aws_s3_bucket.assets.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-
-    bucket_key_enabled = true
-  }
-}
-
-# Separate bucket for access logs, itself private and encrypted, so reads of the
-# assets bucket leave an audit trail.
-resource "aws_s3_bucket" "logs" {
-  bucket = "nimbus-store-assets-logs-${var.environment}"
-
-  tags = {
-    Application = "nimbus-store"
-    Environment = var.environment
-    ManagedBy   = "terraform"
-    Purpose     = "access-logs"
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "logs" {
-  bucket = aws_s3_bucket.logs.id
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "logs" {
-  bucket = aws_s3_bucket.logs.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
-}
-
-resource "aws_s3_bucket_logging" "assets" {
-  bucket = aws_s3_bucket.assets.id
-
-  target_bucket = aws_s3_bucket.logs.id
-  target_prefix = "assets/"
-}
-
-# Nobody is granted read access here. Objects that have to be public are served
-# by the CDN, whose origin access identity is the only reader:
-#
-#   data "aws_iam_policy_document" ... principals { type = "AWS"
-#     identifiers = [aws_cloudfront_origin_access_identity.assets.iam_arn] }
-#
-# The policy below only ever denies: any request that is not TLS is refused,
-# whoever makes it.
+# BUG: this policy permits `s3:GetObject` for everyone and does NOT deny
+# requests made over plaintext HTTP (`aws:SecureTransport = false`).
 resource "aws_s3_bucket_policy" "assets" {
   bucket = aws_s3_bucket.assets.id
-
-  # The public access block must exist before a policy is attached, otherwise a
-  # future permissive statement could take effect for a moment.
-  depends_on = [aws_s3_bucket_public_access_block.assets]
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "DenyInsecureTransport"
-        Effect    = "Deny"
+        Sid       = "PublicReadGetObject"
+        Effect    = "Allow"
         Principal = "*"
-        Action    = "s3:*"
-        Resource = [
-          aws_s3_bucket.assets.arn,
-          "${aws_s3_bucket.assets.arn}/*",
-        ]
-        Condition = {
-          Bool = {
-            "aws:SecureTransport" = "false"
-          }
-        }
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.assets.arn}/*"
       }
     ]
   })
 }
+
+# BUG: no `aws_s3_bucket_server_side_encryption_configuration` resource exists,
+# so objects are stored unencrypted.
+
+# BUG: no `aws_s3_bucket_logging` resource exists, so there is no audit trail
+# of who read what.
 
 output "assets_bucket_name" {
   description = "Name of the Nimbus Store assets bucket."
@@ -178,6 +103,6 @@ output "assets_bucket_name" {
 }
 
 output "assets_bucket_domain" {
-  description = "Domain of the assets bucket, for use as a CDN origin."
+  description = "Public domain of the assets bucket."
   value       = aws_s3_bucket.assets.bucket_domain_name
 }

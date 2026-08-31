@@ -14,22 +14,18 @@ Copilot coding agent.
 That is the point of the demo: agents are trusted to *propose* infrastructure
 changes, never to *ship* them unreviewed.
 
-## Hardening applied
+## Planted defects
 
-The security review in issue #58 found six defects. All six are fixed here and
-pinned by `tests/unit/infra.test.ts`, which fails if any of them returns.
-
-| # | Defect | Fix |
+| # | Defect | Why it matters |
 |---|---|---|
-| 1 | `acl = "public-read"` on the assets bucket | ACL removed; `BucketOwnerEnforced` ownership controls |
-| 2 | No `aws_s3_bucket_public_access_block` | Block added on the assets bucket and the logs bucket |
-| 3 | No server-side encryption configuration | `AES256` default encryption on both buckets |
-| 4 | Bucket policy allows plaintext HTTP | Policy now only denies, on `aws:SecureTransport = false` |
-| 5 | Versioning disabled | Versioning `Enabled` |
-| 6 | No access logging | `aws_s3_bucket_logging` writing to a private logs bucket |
+| 1 | `acl = "public-read"` on the assets bucket | Every object is world-readable |
+| 2 | No `aws_s3_bucket_public_access_block` | Nothing prevents future public grants |
+| 3 | No server-side encryption configuration | Objects stored unencrypted at rest |
+| 4 | Bucket policy allows plaintext HTTP | No `aws:SecureTransport` deny statement |
+| 5 | Versioning disabled | Overwrites are unrecoverable |
+| 6 | No access logging | No audit trail of reads |
 
-Nothing grants read access any more. Objects that genuinely have to be public
-are meant to be served through a CDN origin access identity, not by opening the
-bucket — see the comment above `aws_s3_bucket_policy.assets`.
-
-A human still confirms the blast radius before this merges.
+A coding agent asked to fix these should add a public access block, enable
+SSE, add an explicit `Deny` for `aws:SecureTransport = false`, enable
+versioning, and add a logging target — then a human confirms the blast radius
+before it merges.

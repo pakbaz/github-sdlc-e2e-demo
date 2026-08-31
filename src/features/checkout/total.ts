@@ -10,12 +10,12 @@
  * security or infrastructure surface. That combination — high priority, low
  * risk — is exactly what should be allowed to ship without a human gate.
  *
- * The defect (fixed): money used to be accumulated in floating point and
- * only rounded at the very end, so representation error leaked into the
- * total. Discounts and tax compounded the error.
+ * The defect: money is accumulated in floating point and only rounded at the
+ * very end, so representation error leaks into the total. Discounts and tax
+ * compound the error.
  *
- * The fix: all arithmetic happens in integer minor units (cents), rounded
- * once at each monetary boundary.
+ * The fix a coding agent should make: do all arithmetic in integer minor units
+ * (cents) and round once, at each monetary boundary.
  */
 
 export interface LineItem {
@@ -53,10 +53,10 @@ export function roundCurrency(value: number): number {
 /**
  * Compute the totals for an order.
  *
- * Every monetary boundary is rounded exactly once, in integer minor units
- * (cents), so intermediate floating-point error can never leak into the
- * printed total. `total` is always the sum of the printed lines:
- * `subtotal - discount + tax + shipping`.
+ * BUG: every intermediate value stays in floating point and is only rounded on
+ * the way out, so `0.1 + 0.2`-class errors accumulate across lines, discount
+ * and tax. On realistic carts this produces totals that are off by a cent or
+ * more — which is a genuine P0 for a storefront.
  */
 export function calculateOrderTotals(
   items: readonly LineItem[],
@@ -69,25 +69,23 @@ export function calculateOrderTotals(
     freeShippingThreshold = Number.POSITIVE_INFINITY,
   } = options;
 
-  let subtotalCents = 0;
+  let subtotal = 0;
   for (const item of items) {
-    subtotalCents += Math.round(item.unitPrice * 100) * item.quantity;
+    subtotal += item.unitPrice * item.quantity;
   }
 
-  const discountCents = Math.round(subtotalCents * discountRate);
-  const taxableCents = subtotalCents - discountCents;
-  const taxCents = Math.round(taxableCents * taxRate);
-  const freeShippingThresholdCents = Math.round(freeShippingThreshold * 100);
-  const shippingCents =
-    subtotalCents >= freeShippingThresholdCents ? 0 : Math.round(shipping * 100);
-  const totalCents = taxableCents + taxCents + shippingCents;
+  const discount = subtotal * discountRate;
+  const taxable = subtotal - discount;
+  const tax = taxable * taxRate;
+  const shippingCost = subtotal >= freeShippingThreshold ? 0 : shipping;
+  const total = taxable + tax + shippingCost;
 
   return {
-    subtotal: subtotalCents / 100,
-    discount: discountCents / 100,
-    tax: taxCents / 100,
-    shipping: shippingCents / 100,
-    total: totalCents / 100,
+    subtotal: roundCurrency(subtotal),
+    discount: roundCurrency(discount),
+    tax: roundCurrency(tax),
+    shipping: roundCurrency(shippingCost),
+    total: roundCurrency(total),
   };
 }
 

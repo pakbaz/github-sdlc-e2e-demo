@@ -57,25 +57,14 @@ describe('calculateOrderTotals', () => {
    * charged has to equal the numbers printed above it on the receipt.
    *
    * DEMO NOTE — this is the guard for the "checkout" scenario (P0 / risk low).
-   * `calculateOrderTotals` now accumulates in integer cents, so this is an
-   * exact equality rather than the loose tolerance it started as.
+   * It is currently expressed loosely (a 2-cent tolerance) so `main` stays
+   * green while the defect is planted. The seeded issue asks the coding agent
+   * to fix `calculateOrderTotals` and tighten this to an exact equality.
    */
   it('keeps the printed receipt internally consistent', () => {
     const totals = calculateOrderTotals([item(27.75, 1)], STORE_OPTIONS);
     const printed = totals.subtotal - totals.discount + totals.tax + totals.shipping;
-    expect(totals.total).toBe(printed);
-  });
-
-  it('matches the issue #56 multi-item reproduction exactly', () => {
-    const totals = calculateOrderTotals(
-      [item(19.99, 3), item(14.35, 2)],
-      STORE_OPTIONS,
-    );
-    expect(totals.subtotal).toBe(88.67);
-    expect(totals.discount).toBe(8.87);
-    expect(totals.tax).toBe(6.58);
-    expect(totals.shipping).toBe(7.95);
-    expect(totals.total).toBe(94.33);
+    expect(Math.abs(totals.total - printed)).toBeLessThanOrEqual(0.02);
   });
 });
 
