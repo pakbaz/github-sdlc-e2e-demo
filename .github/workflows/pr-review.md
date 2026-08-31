@@ -20,7 +20,7 @@ timeout-minutes: 15
 
 engine:
   id: copilot
-  model: agent
+  model: auto
 
 tools:
   bash: ["cat", "ls", "find", "grep", "head", "tail", "wc", "sed", "git", "diff"]

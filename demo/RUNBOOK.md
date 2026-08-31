@@ -324,8 +324,8 @@ line-by-line detail is in `demo/AGENTIC-WORKFLOWS.md` if the room pushes):
   declared allow-list.
 - **`add-labels` has an allow-list.** A prompt-injected agent cannot invent a
   label, let alone push code.
-- **The model matches the work.** Show `engine.model: agent` in `triage.md` and
-  `pr-review.md`. It is an adaptive alias: Copilot may use a faster model for a
+- **The model matches the work.** Show `engine.model: auto` in `triage.md` and
+  `pr-review.md`. Copilot may use a faster model for a
   straightforward classification and stronger reasoning for an ambiguous
   review, while respecting the models the administrator permits. The model
   actually used remains visible in the run.

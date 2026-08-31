@@ -25,12 +25,11 @@ The distinction matters on stage. The two `.md` workflows are the ones where
 "the AI decided"; the `.yml` ones are deterministic and you can read them out
 loud line by line without hedging.
 
-Both agentic workflows set `engine.model: agent`, the adaptive model alias.
-Combined with AWF token steering, Copilot can route straightforward
-classification work to a faster model and reserve stronger reasoning for an
-ambiguous issue or a complex pull request. The alias follows the models
-available under the repository's Copilot plan and administrator policies
-instead of pinning this demo to a model name that will age.
+Both agentic workflows set `engine.model: auto`. Copilot can route
+straightforward classification work to a faster model and reserve stronger
+reasoning for an ambiguous issue or a complex pull request. Auto follows the
+models available under the repository's Copilot plan and administrator
+policies instead of pinning this demo to a model name that will age.
 
 ---
 
@@ -135,7 +134,7 @@ network: defaults                 # egress allow-list
 timeout-minutes: 10
 engine:
   id: copilot
-  model: agent                    # adaptive routing by task complexity
+  model: auto                     # adaptive routing by task complexity
 
 tools:
   bash: ["cat", "ls", "find", "grep", "head", "tail", "wc", "sed"]

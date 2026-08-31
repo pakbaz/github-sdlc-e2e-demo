@@ -67,15 +67,15 @@ The two `gh-aw` workflows declare:
 ```yaml
 engine:
   id: copilot
-  model: agent
+  model: auto
 ```
 
-`agent` is an adaptive alias rather than a pinned model ID. AWF token steering
-and Copilot select from the models permitted by the repository's plan and
-administrator policies, considering task complexity and current model
-availability. A straightforward issue classification can use a faster model;
-an ambiguous issue or complex pull-request review can receive stronger
-reasoning without changing this repository.
+`auto` delegates model selection to Copilot rather than pinning a model ID.
+Copilot selects from the models permitted by the repository's plan and
+administrator policies, considering task complexity and current availability.
+A straightforward issue classification can use a faster model; an ambiguous
+issue or complex pull-request review can receive stronger reasoning without
+changing this repository.
 
 `dispatch-to-copilot.yml` does not force a model when assigning the coding
 agent. Copilot cloud agent therefore retains its Auto model selection. The
