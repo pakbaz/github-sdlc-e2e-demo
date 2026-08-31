@@ -4,17 +4,13 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * DEMO SCENARIO: "api" — Priority P1 / Risk MEDIUM  →  HUMAN-GATE LANE
  * ─────────────────────────────────────────────────────────────────────────────
- * This module contains intentional, realistic reliability defects used by the
- * Agentic SDLC demo. It is shared by every feature, so a careless change here
- * degrades the whole product — medium risk, and owned in `.github/CODEOWNERS`.
- *
- * The defects:
- *   1. No timeout, so a hanging server hangs the UI forever.
- *   2. No retry or backoff on transient 5xx / 429 responses.
- *   3. `fetchAllPages` only ever returns the first page, silently truncating
- *      results.
- *   4. Rate-limit responses are not distinguished from other failures.
+ * This module is shared by every feature, so a careless change here degrades
+ * the whole product — medium risk, and owned in `.github/CODEOWNERS`.
  */
+
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 100;
+const MAX_PAGES = 100;
 
 export interface RequestOptions {
   /** Optional bearer token; the dashboard uses this to raise the rate limit. */
@@ -49,35 +45,94 @@ function buildHeaders(token?: string): HeadersInit {
 /**
  * Perform a JSON GET.
  *
- * BUG: `timeoutMs` is accepted but never applied, and there is no retry or
- * backoff for transient failures (429 / 502 / 503 / 504). A single blip
- * surfaces as a hard error in the UI.
+ * Transient failures (429 / 502 / 503 / 504) are retried with bounded backoff.
  */
 export async function getJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
-  const response = await fetch(url, {
-    headers: buildHeaders(options.token),
-    signal: options.signal,
-  });
+  const { data } = await requestJson<T>(url, options);
+  return data;
+}
 
-  if (!response.ok) {
-    throw new ApiError(`Request failed with status ${response.status}`, response.status, url);
+async function requestJson<T>(
+  url: string,
+  options: RequestOptions,
+): Promise<{ data: T; response: Response }> {
+  const controller = new AbortController();
+  const abort = () => controller.abort(options.signal?.reason);
+  if (options.signal?.aborted) {
+    abort();
+  } else {
+    options.signal?.addEventListener('abort', abort, { once: true });
   }
+  const timeoutId =
+    options.timeoutMs === undefined
+      ? undefined
+      : setTimeout(() => controller.abort(), options.timeoutMs);
 
-  return (await response.json()) as T;
+  try {
+    for (let attempt = 0; ; attempt += 1) {
+      const response = await fetch(url, {
+        headers: buildHeaders(options.token),
+        signal: controller.signal,
+      });
+
+      if (response.ok) {
+        return { data: (await response.json()) as T, response };
+      }
+      if (!isRetryableStatus(response.status) || attempt === MAX_RETRIES) {
+        throw new ApiError(`Request failed with status ${response.status}`, response.status, url);
+      }
+
+      await wait(RETRY_DELAY_MS * 2 ** attempt, controller.signal);
+    }
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+    options.signal?.removeEventListener('abort', abort);
+  }
+}
+
+function wait(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timeoutId);
+      reject(signal.reason ?? new DOMException('The operation was aborted', 'AbortError'));
+    };
+    const timeoutId = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
 }
 
 /**
  * Follow RFC 5988 `Link: rel="next"` pagination and return every result.
  *
- * BUG: pagination is never followed. Only the first page is returned, so any
- * caller with more than `per_page` results silently loses data.
+ * Pagination is capped to prevent a malformed response from looping forever.
  */
 export async function fetchAllPages<T>(
   url: string,
   options: RequestOptions = {},
 ): Promise<T[]> {
-  const firstPage = await getJson<T[]>(url, options);
-  return firstPage;
+  const results: T[] = [];
+  let nextUrl: string | null = url;
+
+  for (let page = 0; nextUrl; page += 1) {
+    if (page === MAX_PAGES) {
+      throw new Error(`Pagination exceeded ${MAX_PAGES} pages`);
+    }
+    const { data, response } = await requestJson<T[]>(nextUrl, options);
+    results.push(...data);
+    nextUrl = parseNextLink(response.headers.get('Link'));
+  }
+
+  return results;
 }
 
 /** Extract the URL marked `rel="next"` from a Link header, if present. */
