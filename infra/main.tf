@@ -107,6 +107,8 @@ resource "aws_s3_bucket_versioning" "logs" {
 resource "aws_s3_bucket_policy" "logs" {
   bucket = aws_s3_bucket.logs.id
 
+  depends_on = [aws_s3_bucket_public_access_block.logs]
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
