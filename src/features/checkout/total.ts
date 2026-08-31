@@ -77,12 +77,13 @@ export function calculateOrderTotals(
   const discountCents = Math.round(subtotalCents * discountRate);
   const taxableCents = subtotalCents - discountCents;
   const taxCents = Math.round(taxableCents * taxRate);
-  const subtotal = subtotalCents / 100;
-  const shippingCents = subtotal >= freeShippingThreshold ? 0 : Math.round(shipping * 100);
+  const freeShippingThresholdCents = Math.round(freeShippingThreshold * 100);
+  const shippingCents =
+    subtotalCents >= freeShippingThresholdCents ? 0 : Math.round(shipping * 100);
   const totalCents = taxableCents + taxCents + shippingCents;
 
   return {
-    subtotal,
+    subtotal: subtotalCents / 100,
     discount: discountCents / 100,
     tax: taxCents / 100,
     shipping: shippingCents / 100,
