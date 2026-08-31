@@ -128,6 +128,7 @@ happen while you are talking.
 | [`demo/RUNBOOK.md`](demo/RUNBOOK.md) | The 60-minute run of show |
 | [`demo/POLICY.md`](demo/POLICY.md) | The risk/priority policy and why each area is where it is |
 | [`demo/ARCHITECTURE.md`](demo/ARCHITECTURE.md) | Diagrams of the pipeline and why agentic workflows are read-only |
+| [`demo/AGENTIC-WORKFLOWS.md`](demo/AGENTIC-WORKFLOWS.md) | Line-by-line breakdown of the two agentic workflows, their allow-lists and their sandbox |
 | [`.github/CODEOWNERS`](.github/CODEOWNERS) | The gate. The omissions matter as much as the entries. |
 | `.github/workflows/triage.md` | Agentic triage — reads the issue, greps the code, labels it, explains itself |
 | `.github/workflows/pr-review.md` | Agentic review — can comment and request changes, never approve |

@@ -82,6 +82,10 @@ permitted. `add-labels` declares `allowed: [area/*, priority/*, risk/*,
 route/*, agent/triaged]`, so a prompt-injected agent cannot invent a label —
 let alone push code.
 
+For the full breakdown — every frontmatter field, the seven compiled jobs, the
+network firewall, the token subtleties and the gotchas — see
+[`demo/AGENTIC-WORKFLOWS.md`](AGENTIC-WORKFLOWS.md).
+
 ## The three-way agreement
 
 The routing table exists in three places, and they must stay in sync:

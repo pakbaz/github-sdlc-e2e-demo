@@ -61,7 +61,7 @@ while you talk. This is the single highest-value thing on this checklist.
 ### Fallbacks
 
 | If | Do |
-|---|---|
+| --- | --- |
 | Triage is slow (>3 min) | Keep talking through §3. It always lands. |
 | The coding agent stalls | You seeded five issues; switch to one that moved. |
 | A run fails | Show the failure — it is *more* convincing. Then re-run it. |
@@ -72,6 +72,7 @@ while you talk. This is the single highest-value thing on this checklist.
 | Copilot opens a PR then the run dies instantly | The `copilot` repository environment is missing — the agent's session targets it. `gh api -X PUT repos/OWNER/REPO/environments/copilot`, or just re-run `make setup`. `make doctor` catches this beforehand. |
 | Nothing dispatches at all — no runs, no checks | Check [githubstatus.com](https://www.githubstatus.com). During an Actions incident every lane stalls; the board and the store stay up because they read the REST API directly. |
 | An issue is fully labelled but nothing picks it up | A `labeled` webhook was dropped. `gh workflow run "Dispatch to Copilot" -f issue=NN` re-runs the handoff; it is idempotent. |
+| You filed an issue and no triage run started at all | The issue was created by a bot or by the default `GITHUB_TOKEN`, which does not fire `on: issues`. File it as yourself (`gh issue create`, the web form, or `make seed-auto`). Nothing re-triggers a missed `opened` event except closing and reopening the issue. |
 | The agent's PR sits in draft after it finishes | `agent-pr-ready.yml` promotes it within 5 minutes. To skip the wait: `gh workflow run "Agent PR ready" -f pr=NN`, or just `gh pr ready NN`. |
 | You fixed a workflow on `main` but the open agent PR still misbehaves | `pull_request` runs execute the workflow file **from the pull request's head branch**, not from `main`. A branch the agent cut before your fix keeps running the old version until it is rebased. `workflow_dispatch` and `schedule` always run from `main` — that is exactly what the 5-minute sweep is for. |
 | A run on a `copilot/*` branch says *action_required* | "Require approval for workflow runs" is still on — see the once-per-account list above. Unblock this run by approving it in the Actions tab, then fix the setting before the next one. |
@@ -103,18 +104,148 @@ Let them answer. Most rooms say the money bug. **Hold that thought.**
 
 ---
 
-## 0:05 – 0:08 · File the first issue
+## 0:05 – 0:08 · File the two issues
 
-Go to Issues → New issue → **Bug report**, and file the cart badge bug **by
-hand, live**, typing it in front of them. Do not apply any labels.
+You file two issues here: **`ui`** (cart badge) and **`checkout`** (money bug).
+Nothing else. Whichever route you take, three things must hold or the demo
+breaks:
 
-> "That's my entire job in this demo. One issue. No labels, no assignee, no
+1. **Apply no labels.** Not `area/*`, not `priority/*`, not `risk/*`. The whole
+   point is that a machine decided them. The only label allowed is `demo`, and
+   that exists solely so `reset.sh` can clean up.
+2. **Assign nobody.** `dispatch-to-copilot.yml` does the handoff once triage
+   applies `agent/triaged`. Assigning by hand short-circuits the stage you are
+   trying to show.
+3. **The issue must be created by a user token.** Issues created with the
+   default `GITHUB_TOKEN` do not fire `on: issues`, so triage never starts.
+   This is why `demo-seed.yml` uses `DEMO_PAT`. See the note in that workflow.
+
+### Option A — type it live (highest credibility, ~2 min of talking)
+
+Issues → **New issue** → **Bug report**. Type the short version below, not the
+full text from `demo/scenarios/`. The seeded bodies are written for the triage
+agent, not for a projector, and typing one live is three minutes of dead air.
+Triage only needs enough to locate the code.
+
+**Issue 1 — title:**
+
+```
+Cart badge shows the wrong number of items
+```
+
+| Field | Type this |
+| --- | --- |
+| What is broken? | `The cart badge counts distinct products, not items. Three of the same mug still shows 1.` |
+| `Reproduction` | `1. Open the store``  /  ``2. Set Cirrus Ceramic Mug to 3``  /  ``3. Set Drift Merino Socks to 2``  /  ``4. Look at the cart badge` |
+| Expected behaviour | `The badge reads 5. The screen-reader label should say "Cart, 1 item", not "Cart, 1 items".` |
+| Customer impact | **Cosmetic — nobody is blocked** |
+| Suspected area | leave blank — let it find the file itself |
+
+Leaving *Suspected area* blank is worth doing deliberately. It makes the
+*Evidence* section you read aloud at 0:18 much stronger: nobody told it where
+to look.
+
+**Issue 2 — title:**
+
+```
+Order total is off by a cent on multi-item carts
+```
+
+| Field | Type this |
+| --- | --- |
+| What is broken? | `The order summary does not add up. The total we charge is one cent higher than the lines we show the customer.` |
+| Reproduction | `1. Open the store` / `2. Set Cirrus Ceramic Mug to 3` / `3. Set Drift Merino Socks to 2` / `4. Read the order summary: 88.67 - 8.87 + 6.58 + 7.95 = 94.33, but the total says 94.34` |
+| Expected behaviour | `The printed receipt must satisfy total === subtotal - discount + tax + shipping, for every cart.` |
+| Customer impact | **Critical — customers are losing money, data, or access** |
+| Suspected area | leave blank |
+
+Say the impact dropdowns out loud as you pick them — *Cosmetic* for one,
+*Critical* for the other. That contrast is what makes the triage result land
+eight minutes later, because the **Critical** one is the one that ships itself.
+
+### Option B — prefilled, one click, still visibly you (recommended)
+
+Same result, no typing, and the audience still watches a human press **Submit**.
+Run this before you go on stage; it opens two browser tabs with the fields
+already filled:
+
+```bash
+gh issue create --repo pakbaz/github-sdlc-e2e-demo --web \
+  --title "Cart badge shows the wrong number of items" \
+  --body "The cart badge counts distinct products, not items — three of the same mug still shows 1.
+
+Repro: open the store, set Cirrus Ceramic Mug to 3 and Drift Merino Socks to 2. The badge reads 2; it should read 5. The screen-reader label says \"Cart, 1 items\"."
+
+gh issue create --repo pakbaz/github-sdlc-e2e-demo --web \
+  --title "Order total is off by a cent on multi-item carts" \
+  --body "The order summary does not add up. With 3 mugs and 2 socks the printed lines are 88.67 - 8.87 + 6.58 + 7.95 = 94.33, but the total reads \$94.34.
+
+The receipt must satisfy total === subtotal - discount + tax + shipping for every cart."
+```
+
+`--web` opens the new-issue page with title and body filled and submits
+nothing. You click **Submit new issue** on stage. Note it bypasses the *Bug
+report* form and uses the plain editor — that is fine, triage reads free prose.
+
+If you would rather keep the structured form on screen, GitHub also prefills
+issue forms from query parameters keyed by the field ids in
+`.github/ISSUE_TEMPLATE/bug_report.yml` (`summary`, `reproduction`, `expected`,
+`impact`, `area`):
+
+```
+/issues/new?template=bug_report.yml&title=…&summary=…&reproduction=…&impact=Cosmetic%20%E2%80%94%20nobody%20is%20blocked
+```
+
+Build those two URLs once and bookmark them.
+
+### Option C — fully scripted (zero typing, least dramatic)
+
+```bash
+make seed-auto        # files ui + checkout, `demo` label only
+```
+
+or Actions → **Demo · seed scenarios** → `auto-lane`. Use this if you are short
+on time, presenting without a terminal, or recovering from a failed run
+mid-session. The cost is that the room did not see you author anything, so say
+out loud what the script did: *"that filed two issues with one label on them —
+`demo` — and nothing else."*
+
+### "Can I use the Agents tab to file these for me?"
+
+**Not for this step, no.** The Agents tab (`github.com/copilot/agents`) starts
+the coding agent from a prompt and it opens a **pull request**. It does not
+open an issue. Going that way skips the issue entirely, and with it triage,
+labelling and `dispatch-to-copilot` — which is to say it skips the three stages
+that constitute the argument you are making. The rest of the hour has nothing
+to point at.
+
+The distinction is worth stating plainly if someone asks:
+
+| Route | What GitHub decides | Demo value |
+| --- | --- | --- |
+| Issue → triage → dispatch → PR | the lane, from the diff | **the whole demo** |
+| Agents tab → PR | nothing upstream; only `policy-gate` and CODEOWNERS still apply | a good 90-second bonus |
+
+That bonus is real, though, and it is the strongest answer to \*"fine, but what
+if someone skips your pipeline?"\* If you have time at 0:52, open the Agents tab,
+give it *"remove the expiry check from src/features/auth/session.ts"*, and let
+the room watch the resulting pull request hit the same gate. The guardrail is in
+`CODEOWNERS` and the ruleset, not in the workflow that happened to create the
+branch — so entering from a different door changes nothing.
+
+Copilot can also open issues for you conversationally, and that *does* preserve
+the pipeline because the issue is created as you. But it costs you the moment:
+what the room remembers is you typing three sentences and touching nothing else
+for the next fifty minutes.
+
+### After filing, either way
+
+Switch to the **pipeline board**. Two cards appear in **Filed**, unlabelled.
+
+> "That's my entire job in this demo. Two issues. No labels, no assignee, no
 > priority. Watch what happens."
 
-Switch to the **pipeline board**. The card appears in **Filed**.
-
-Immediately file the second one — the money bug — the same way. Two cards in
-flight.
+Then leave them alone.
 
 > "Now, while those work, let me show you what's about to make the decision."
 
@@ -184,7 +315,8 @@ make seed-gated      # auth, infra, api
 
 or Actions → **Demo · seed scenarios** → `gated-lane`.
 
-While those triage, cover the architecture (`demo/ARCHITECTURE.md`):
+While those triage, cover the architecture (`demo/ARCHITECTURE.md`; the
+line-by-line detail is in `demo/AGENTIC-WORKFLOWS.md` if the room pushes):
 
 - **Agentic workflows are read-only.** Show the compiled `.lock.yml` — an agent
   job with `read-all`, and a *separate* `safe_outputs` job that holds the write
@@ -297,7 +429,7 @@ Close on the three ideas, not on the tooling:
 ## Audience interaction points
 
 | Time | Prompt |
-|---|---|
+| --- | --- |
 | 0:04 | "Which of these two bugs needs my approval?" — most say the money bug |
 | 0:12 | "Which directory in *your* repo would you never let a robot touch?" |
 | 0:22 | "Was the triage right? Would you have labelled it the same way?" |
