@@ -4,14 +4,13 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * DEMO SCENARIO: "ui" — Priority P3 / Risk LOW  →  AUTOMATED LANE
  * ─────────────────────────────────────────────────────────────────────────────
- * This module contains an intentional, cosmetic defect used by the Agentic SDLC
- * demo. Nothing here touches money, auth, infrastructure or shared plumbing:
- * `src/features/ui/**` deliberately has NO entry in `.github/CODEOWNERS`, so a
- * pull request that only touches this directory needs zero human approvals and
- * can merge and deploy itself.
- *
- * The defect: the cart badge counts distinct lines instead of total units, so a
- * cart holding three of one item shows "1".
+ * This module previously contained an intentional, cosmetic defect used by
+ * the Agentic SDLC demo (the cart badge counted distinct lines instead of
+ * total units, so a cart holding three of one item showed "1"). It has since
+ * been fixed. Nothing here touches money, auth, infrastructure or shared
+ * plumbing: `src/features/ui/**` deliberately has NO entry in
+ * `.github/CODEOWNERS`, so a pull request that only touches this directory
+ * needs zero human approvals and can merge and deploy itself.
  */
 
 export interface CartLine {
@@ -20,13 +19,11 @@ export interface CartLine {
 }
 
 /**
- * Number to render inside the cart badge.
- *
- * BUG: returns the number of distinct lines rather than the number of units in
- * the cart. Adding a second copy of the same product does not move the badge.
+ * Number to render inside the cart badge: the total number of units across
+ * all lines, not the number of distinct lines.
  */
 export function cartBadgeCount(lines: readonly CartLine[]): number {
-  return lines.length;
+  return lines.reduce((total, line) => total + line.quantity, 0);
 }
 
 /**
@@ -41,9 +38,7 @@ export function formatBadge(count: number): string {
 
 /**
  * Accessible label for the cart button.
- *
- * BUG: always says "items", so a single-item cart reads "1 items".
  */
 export function cartAriaLabel(count: number): string {
-  return `Cart, ${count} items`;
+  return `Cart, ${count} ${count === 1 ? 'item' : 'items'}`;
 }
