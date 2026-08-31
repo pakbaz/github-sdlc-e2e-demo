@@ -34,6 +34,18 @@ describe('isSessionValid', () => {
   it('accepts a freshly issued session', () => {
     expect(isSessionValid(createSession('user-1', NOW), NOW)).toBe(true);
   });
+
+  it('accepts a session up to the last millisecond before expiry', () => {
+    const session = createSession('user-1', NOW);
+    expect(isSessionValid(session, session.expiresAt - 1)).toBe(true);
+  });
+
+  it('rejects a session at and after its expiry', () => {
+    const session = createSession('user-1', NOW);
+    expect(isSessionValid(session, session.expiresAt)).toBe(false);
+    expect(isSessionValid(session, session.expiresAt + 1)).toBe(false);
+    expect(isSessionValid(session, NOW + 5 * 24 * 60 * 60 * 1000)).toBe(false);
+  });
 });
 
 describe('millisUntilExpiry', () => {
@@ -58,6 +70,11 @@ describe('hasScope', () => {
   it('denies everything for a missing session', () => {
     expect(hasScope(null, 'store:read', NOW)).toBe(false);
   });
+
+  it('denies scopes once the session has expired', () => {
+    const session = createSession('user-1', NOW);
+    expect(hasScope(session, 'cart:write', session.expiresAt + 1)).toBe(false);
+  });
 });
 
 describe('parseSession', () => {
@@ -74,17 +91,33 @@ describe('parseSession', () => {
     const session = createSession('user-1', NOW);
     expect(parseSession(JSON.stringify(session))).toEqual(session);
   });
+
+  it('rejects stored state that is not a session object', () => {
+    expect(parseSession('{"userId": 123}')).toBeNull();
+    expect(parseSession('null')).toBeNull();
+    expect(parseSession('"nimbus"')).toBeNull();
+    expect(parseSession('[]')).toBeNull();
+  });
+
+  it('rejects a session with missing or wrongly typed fields', () => {
+    const session = createSession('user-1', NOW);
+    expect(parseSession(JSON.stringify({ ...session, token: 42 }))).toBeNull();
+    expect(parseSession(JSON.stringify({ ...session, expiresAt: 'soon' }))).toBeNull();
+    expect(parseSession(JSON.stringify({ ...session, scopes: 'store:read' }))).toBeNull();
+    expect(parseSession(JSON.stringify({ ...session, scopes: ['store:read', 7] }))).toBeNull();
+    expect(parseSession(JSON.stringify({ ...session, issuedAt: undefined }))).toBeNull();
+  });
 });
 
 /**
  * DEMO NOTE — the "auth" scenario (P0 / risk HIGH).
  *
- * `isSessionValid` currently ignores `expiresAt` entirely, so an expired
- * session is still accepted. The tests above deliberately do not assert the
- * expiry behaviour, which keeps `main` green while the defect is planted.
+ * `isSessionValid` used to ignore `expiresAt` entirely, so an expired session
+ * was still accepted. The tests above deliberately did not assert the expiry
+ * behaviour, which kept `main` green while the defect was planted.
  *
- * The seeded issue asks the coding agent to enforce expiry and add regression
- * tests here. Because `src/features/auth/**` has a CODEOWNER, the resulting
- * pull request cannot merge until a human approves it — no matter how good
- * the fix or how green the checks are.
+ * The seeded issue asked the coding agent to enforce expiry and add the
+ * regression tests now present above. Because `src/features/auth/**` has a
+ * CODEOWNER, the resulting pull request cannot merge until a human approves
+ * it — no matter how good the fix or how green the checks are.
  */
