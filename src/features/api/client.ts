@@ -54,8 +54,17 @@ function buildHeaders(token?: string): HeadersInit {
   return headers;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** Wait, but stop waiting as soon as the caller cancels. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done);
+  });
 }
 
 /**
@@ -105,7 +114,7 @@ async function getResponse(url: string, options: RequestOptions): Promise<Respon
       return response;
     }
     if (attempt < retries && isRetryableStatus(response.status) && !options.signal?.aborted) {
-      await sleep(baseDelay * 2 ** attempt);
+      await sleep(baseDelay * 2 ** attempt, options.signal);
       continue;
     }
     throw new ApiError(`Request failed with status ${response.status}`, response.status, url);
