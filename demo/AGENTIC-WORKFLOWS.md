@@ -25,12 +25,10 @@ The distinction matters on stage. The two `.md` workflows are the ones where
 "the AI decided"; the `.yml` ones are deterministic and you can read them out
 loud line by line without hedging.
 
-Both agentic workflows deliberately omit a model and inherit the tested
-Copilot engine default. The Copilot runtime bundled with `gh-aw` v0.81.6
-rejects both `model: auto` and `model: agent` at execution time even though
-both forms compile successfully. Copilot cloud agent is a separate runtime:
-the issue assignment leaves its model on Auto, so implementation tasks still
-receive complexity-aware model selection.
+Both agentic workflows explicitly request `model: auto`, matching the Copilot
+cloud agent assignment. That keeps model selection complexity-aware, but a
+successful `gh aw compile` is not proof of runtime availability; model changes
+must also be exercised by a live workflow run.
 
 ---
 
@@ -133,7 +131,9 @@ on:
 permissions: read-all             # the agent job. It cannot write. At all.
 network: defaults                 # egress allow-list
 timeout-minutes: 10
-engine: copilot                   # tested gh-aw default; see model note below
+engine:
+  id: copilot
+  model: auto                     # runtime chooses the model; see below
 
 tools:
   bash: ["cat", "ls", "find", "grep", "head", "tail", "wc", "sed"]
@@ -170,7 +170,8 @@ Three things to point at:
 ### Model-selection compatibility
 
 Do not infer runtime support from a successful compile. With the version pinned
-in this repository, both of these compile:
+in this repository, model aliases can compile even when the runtime catalog has
+changed:
 
 ```yaml
 model: auto
@@ -182,10 +183,10 @@ engine:
   model: agent
 ```
 
-Both then fail in `Execute GitHub Copilot CLI` with *\"model is retired or
-unsupported\"*. Keep `engine: copilot` until a `gh-aw` upgrade has been tested
-through a real run. The coding agent is different: its assignment API does not
-force a model, so Copilot cloud agent retains Auto model selection.
+Past runs have failed in `Execute GitHub Copilot CLI` when an alias or default
+resolved to a retired model. The workflows now request `auto` explicitly so the
+runtime can select an available model, and the model guard ensures that choice
+reaches the compiled lock files. A live run remains the compatibility test.
 
 ### The prompt, and why it is shaped that way
 

@@ -37,9 +37,27 @@ for wf in .github/workflows/*.yml; do
   fi
 done
 
+expected_agentic_model="auto"
+for workflow in triage pr-review; do
+  source=".github/workflows/${workflow}.md"
+  lock=".github/workflows/${workflow}.lock.yml"
+
+  if grep -Fq "  model: ${expected_agentic_model}" "$source" \
+    && grep -Fq "\"agent_model\":\"${expected_agentic_model}\"" "$lock" \
+    && grep -Fq "COPILOT_MODEL: ${expected_agentic_model}" "$lock" \
+    && ! grep -Fq "claude-sonnet-4.6" "$lock"; then
+    printf '\033[32m✓\033[0m %s model selection\n' "$workflow"
+  else
+    printf '\033[31m✗\033[0m %s model selection\n' "$workflow"
+    printf '    Recompile with model %s; stale defaults must not reach the lock file.\n' \
+      "$expected_agentic_model"
+    fail=1
+  fi
+done
+
 if [ "$fail" -ne 0 ]; then
-  printf '\nWorkflow shell check failed.\n'
+  printf '\nWorkflow checks failed.\n'
   exit 1
 fi
 
-printf '\nAll workflow shell blocks parse.\n'
+printf '\nAll workflow checks passed.\n'

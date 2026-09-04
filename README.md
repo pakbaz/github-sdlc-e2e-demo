@@ -55,10 +55,10 @@ The agentic reviewer is declared with
 `allowed-events: [COMMENT, REQUEST_CHANGES]`, so it is structurally incapable
 of approving — two agents can never approve each other into production.
 
-The Copilot coding agent assignment leaves model selection on **Auto**, so
-Copilot can match the model to the implementation task. The two `gh-aw`
-workflows intentionally use their tested engine default: the Copilot runtime
-bundled with `gh-aw` v0.81.6 rejects both `model: auto` and the `agent` alias.
+The Copilot coding agent assignment leaves model selection on **Auto**, and the
+two `gh-aw` workflows explicitly request `model: auto`, so Copilot can match the
+model to each task. Because `gh aw compile` does not verify runtime model
+availability, model changes still need a live workflow run.
 
 ## Run it
 
