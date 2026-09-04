@@ -37,7 +37,7 @@ for wf in .github/workflows/*.yml; do
   fi
 done
 
-expected_agentic_model="claude-sonnet-5"
+expected_agentic_model="auto"
 for workflow in triage pr-review; do
   source=".github/workflows/${workflow}.md"
   lock=".github/workflows/${workflow}.lock.yml"
@@ -46,10 +46,10 @@ for workflow in triage pr-review; do
     && grep -Fq "\"agent_model\":\"${expected_agentic_model}\"" "$lock" \
     && grep -Fq "COPILOT_MODEL: ${expected_agentic_model}" "$lock" \
     && ! grep -Fq "claude-sonnet-4.6" "$lock"; then
-    printf '\033[32m✓\033[0m %s model pin\n' "$workflow"
+    printf '\033[32m✓\033[0m %s model selection\n' "$workflow"
   else
-    printf '\033[31m✗\033[0m %s model pin\n' "$workflow"
-    printf '    Recompile with model %s; retired defaults must not reach the lock file.\n' \
+    printf '\033[31m✗\033[0m %s model selection\n' "$workflow"
+    printf '    Recompile with model %s; stale defaults must not reach the lock file.\n' \
       "$expected_agentic_model"
     fail=1
   fi

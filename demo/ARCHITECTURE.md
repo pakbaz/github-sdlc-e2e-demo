@@ -67,15 +67,12 @@ There are two different model-selection planes in this pipeline:
 | Agent | Selection |
 |---|---|
 | Copilot coding agent | **Auto** — `dispatch-to-copilot.yml` assigns the agent without forcing a model, so Copilot can match the model to implementation complexity and availability |
-| `gh-aw` triage and review | **Pinned** — both explicitly select `claude-sonnet-5`, a model supported by the agentic-workflows runtime |
+| `gh-aw` triage and review | **Auto** — both explicitly request `model: auto`, allowing the runtime to choose an available model |
 
-Do not add `model: auto` or `model: agent` to the two `gh-aw` workflows while
-this repository is on `gh-aw` v0.81.6. Both forms pass compilation, but the
-bundled Copilot runtime rejects them at execution time as retired or
-unsupported. Do not rely on the bare `engine: copilot` default either: it
-compiled to `claude-sonnet-4.6`, then failed when that model left the runtime
-allow-list. Re-test the runtime, not just `gh aw compile`, before revisiting the
-pin after an upgrade.
+Model aliases and defaults can pass compilation but still fail when the runtime
+catalog changes. The explicit `auto` selection is guarded in CI so it reaches
+the lock files, but runtime compatibility must still be verified with a live
+workflow run after an upgrade or model-catalog change.
 
 ## Why agentic workflows are read-only
 
