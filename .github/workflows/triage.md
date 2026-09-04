@@ -17,7 +17,9 @@ network: defaults
 
 timeout-minutes: 10
 
-engine: copilot
+engine:
+  id: copilot
+  model: claude-sonnet-5
 
 tools:
   bash: ["cat", "ls", "find", "grep", "head", "tail", "wc", "sed"]

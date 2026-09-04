@@ -328,8 +328,9 @@ line-by-line detail is in `demo/AGENTIC-WORKFLOWS.md` if the room pushes):
   coding agent without forcing a model, so Copilot cloud agent retains Auto
   selection and can match the model to implementation complexity. Do not
   confuse that with the two `gh-aw` workflows: on the current `gh-aw` v0.81.6,
-  adding `model: auto` or `model: agent` compiles but fails at runtime. They
-  deliberately inherit their tested engine default.
+  `model: auto`, `model: agent`, and the former bare engine default have all
+  compiled successfully and then failed after runtime model changes. They pin
+  the currently supported `claude-sonnet-5` model explicitly.
 - **The reviewer cannot approve.** Show the frontmatter:
   `allowed-events: [COMMENT, REQUEST_CHANGES]`. Two agents cannot approve each
   other into production.

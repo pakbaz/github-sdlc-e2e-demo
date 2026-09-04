@@ -25,10 +25,10 @@ The distinction matters on stage. The two `.md` workflows are the ones where
 "the AI decided"; the `.yml` ones are deterministic and you can read them out
 loud line by line without hedging.
 
-Both agentic workflows deliberately omit a model and inherit the tested
-Copilot engine default. The Copilot runtime bundled with `gh-aw` v0.81.6
-rejects both `model: auto` and `model: agent` at execution time even though
-both forms compile successfully. Copilot cloud agent is a separate runtime:
+Both agentic workflows pin `claude-sonnet-5`. The Copilot runtime bundled with
+`gh-aw` v0.81.6 rejects `model: auto` and `model: agent` at execution time even
+though both forms compile successfully, and its former bare engine default
+later resolved to a removed model. Copilot cloud agent is a separate runtime:
 the issue assignment leaves its model on Auto, so implementation tasks still
 receive complexity-aware model selection.
 
@@ -133,7 +133,9 @@ on:
 permissions: read-all             # the agent job. It cannot write. At all.
 network: defaults                 # egress allow-list
 timeout-minutes: 10
-engine: copilot                   # tested gh-aw default; see model note below
+engine:
+  id: copilot
+  model: claude-sonnet-5          # exact runtime-supported model; see below
 
 tools:
   bash: ["cat", "ls", "find", "grep", "head", "tail", "wc", "sed"]
@@ -183,9 +185,12 @@ engine:
 ```
 
 Both then fail in `Execute GitHub Copilot CLI` with *\"model is retired or
-unsupported\"*. Keep `engine: copilot` until a `gh-aw` upgrade has been tested
-through a real run. The coding agent is different: its assignment API does not
-force a model, so Copilot cloud agent retains Auto model selection.
+unsupported\"*. The former bare `engine: copilot` default also compiled cleanly,
+but resolved to `claude-sonnet-4.6` and failed after that model was removed from
+the agentic-workflows allow-list. The workflows therefore pin the exact
+runtime-supported `claude-sonnet-5` model. The coding agent is different: its
+assignment API does not force a model, so Copilot cloud agent retains Auto model
+selection.
 
 ### The prompt, and why it is shaped that way
 

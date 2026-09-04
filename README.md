@@ -57,8 +57,9 @@ of approving — two agents can never approve each other into production.
 
 The Copilot coding agent assignment leaves model selection on **Auto**, so
 Copilot can match the model to the implementation task. The two `gh-aw`
-workflows intentionally use their tested engine default: the Copilot runtime
-bundled with `gh-aw` v0.81.6 rejects both `model: auto` and the `agent` alias.
+workflows pin `claude-sonnet-5`: `gh-aw` v0.81.6's bare Copilot default resolved
+to `claude-sonnet-4.6`, which was later removed from the agentic-workflows
+runtime even though compilation still succeeded.
 
 ## Run it
 
