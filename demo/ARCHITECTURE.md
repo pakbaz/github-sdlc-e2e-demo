@@ -82,11 +82,9 @@ after an upgrade.
 
 ```mermaid
 flowchart LR
-  A["agent job<br/><code>permissions: read-all</code>"]
-  -->|"structured JSON<br/>on stdout"|
-  B["threat detection"]
-  --> C["safe_outputs job<br/><i>has write permissions</i>"]
-  --> D["labels · comments · reviews"]
+  A["agent job<br/><code>permissions: read-all</code>"] -->|"structured JSON<br/>on stdout"| B["threat detection"]
+  B --> C["safe_outputs job<br/><i>has write permissions</i>"]
+  C --> D["labels · comments · reviews"]
 
   style A fill:#f6f8fa,stroke:#8c959f
   style C fill:#fff8c5,stroke:#bf8700
@@ -129,8 +127,8 @@ src/
   features/
     ui/         cart badge + storefront          ← planted defect · low risk
     checkout/   order totals                     ← planted defect · low risk
-    auth/       session validation               ← planted defect · HIGH risk
-    api/        shared HTTP client               ← planted defect · medium risk
+    auth/       session validation                ← planted defect · HIGH risk
+    api/        shared HTTP client                ← planted defect · medium risk
     dashboard/  policy.ts · github.ts ·
                 pipeline.ts · PipelinePage ·
                 PolicyPage                       ← the live control tower
